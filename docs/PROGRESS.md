@@ -33,7 +33,7 @@
 | 当前 shell | PASS | PowerShell 7.6.5，原生 Windows 工作目录；不是 WSL/Linux shell |
 | WSL | PASS | 注册了 `docker-desktop` WSL2 发行版，当前停止；未用它代表 Windows 桌面行为 |
 | Node / npm | PASS | Node v22.13.1，npm/npx 10.9.2 |
-| Git | PASS | Git 2.51.0.windows.2；仓库初始化成功，分支 `main`，尚无提交 |
+| Git | PASS | Git 2.51.0.windows.2；`main` 跟踪 `origin/main`；增量复核开始时 HEAD 为 `2255b2b`、共 2 个提交且工作树干净，阶段 0 初次启动时曾是无提交仓库 |
 | 其他 CLI | PASS | Python 3.10.9、Ninja 1.10.2 可用；pnpm 11.19.0 来自 Codex bundled runtime，但项目约定仍使用 npm |
 | Windows 原生构建线索 | PASS | Visual Studio 2022 Community 17.13.35825.156、MSBuild 17.13.15.12501、MSVC x64 14.43.34808 的 `cl.exe` 已找到 |
 | Windows SDK / CMake | NOT_RUN | Windows Kits 目录只见 `UnionMetadata`，未确认完整 SDK；`cmake` 不在 PATH 且未找到 VS bundled CMake。是否阻塞 native helper 要在阶段 1 用实际构建确认 |
@@ -55,7 +55,7 @@
 
 ## 文件变更
 
-- `.git/`：通过 `git init -b main .` 创建；没有提交。
+- `.git/`：阶段 0 初次启动时通过 `git init -b main .` 创建；该历史步骤当时没有提交，当前已有 2 个提交并跟踪 `origin/main`。
 - `AGENTS.md`：增加桌面宿主早期门槛。
 - `docs/ACCEPTANCE.md`：补充现有验收判定并添加阶段/证据路由；A01-A28 状态仍全部为 `NOT_RUN`。
 - `docs/ARCHITECTURE.md`：新建阶段 0 架构、依赖和所有权基线。
@@ -81,7 +81,7 @@
 | 两个只读子 agent 并行任务 | PASS | 两个 agent 均完成并返回报告；文件修改为 0 |
 | 阶段 0 文档完整性脚本 | PASS | 退出 0；5 个必需文档存在，A01-A28 共 28 个且无重复，修改文件无行尾空白并以换行结尾 |
 | 最终复核脚本（修正规则后） | PASS | 退出 0；Git worktree/`main`、文档、验收编号、空白与状态措辞检查通过。第一次辅助脚本仅因匹配到 `AGENTS.md` 中禁止“预计通过”的说明文字而假阳性退出 1，未掩盖文档缺陷 |
-| `git status --short --branch`（文档落盘后） | PASS | `main` 分支尚无提交；仅原始提示词包和本轮文档为预期的未跟踪文件 |
+| `git status --short --branch`（阶段 0 初次文档落盘后） | PASS | 这是历史快照：当时 `main` 尚无提交，原始提示词包和本轮文档为预期的未跟踪文件；当前状态见下方增量复核 |
 | Electron、SQLite、项目脚本、Windows GUI/IME、打包 | NOT_RUN | 本阶段没有实现条件，也没有伪造命令或结果 |
 
 截图/日志证据：`NOT_RUN`。本轮没有应用或原生桌面控制能力，因此没有生成截图；环境和命令证据保留在当前 Codex 任务记录中。
@@ -107,3 +107,42 @@
 | 首次推送 | PASS | `main` 已推送；GitHub API 回读的首次提交为 `534b387d58b9306b1a5aa9410ed29e241d67abb7`，作者与本地匿名元数据一致 |
 
 本次没有应用代码、依赖安装、Electron 运行、自动化测试或 Windows GUI 验收；这些状态仍保持 `NOT_RUN`。GitHub 账户所有权本身是公开可见的，匿名元数据只避免提交记录包含本机 Git 姓名和邮箱。
+
+## 阶段 0 增量复核（2026-09-15）
+
+### 结论与真实分工
+
+| 项目 | 状态 | 结果 |
+| --- | --- | --- |
+| 阶段 0 文档一致性 | PASS | PRODUCT 与 ARCHITECTURE 覆盖 10 项约束；ACCEPTANCE 保持 A01-A28 且补清透明降级、核心入口、捕获类型、日志内容、时间边界和范围排除 |
+| Git 基线 | PASS | 复核开始时 `main...origin/main`，HEAD `2255b2b`，2 个提交，工作树干净；增量复核任务只修改阶段 0 文档，当时尚未提交 |
+| DESKTOP-RISK-RECHECK-0 | PASS | Pauli (`01a0a4be-0194-7f02-a1f7-58287f23eadf`) 严格只读，发现透明证据缺口和历史 Git 快照歧义；修改文件 0、接口变化无 |
+| QA-SCENARIOS-RECHECK-0 | PASS | Pasteur (`01a0a4be-029d-7280-9e1b-642adf341ff5`) 严格只读，完成需求到 A01-A28 的映射并发现证据路由分层歧义；修改文件 0、接口变化无 |
+| 应用、Electron、SQLite、Windows GUI/IME 与打包 | NOT_RUN | 当前仍无应用代码、依赖或运行入口；没有用浏览器或交互会话迹象替代桌面验证 |
+
+### 文件变更
+
+- `docs/ACCEPTANCE.md`：补强现有条目，不增加或删除验收编号；把证据路由拆为首次验证与必要回归。
+- `docs/PROGRESS.md`：区分阶段 0 初次 Git 快照和当前已提交/推送状态，记录本次真实 agent 分工、环境与检查。
+- `AGENTS.md`、`docs/PRODUCT.md`、`docs/ARCHITECTURE.md`：完整复核后无需修改。
+
+### 执行命令与证据
+
+| 命令/检查 | 状态 | 实际结果 |
+| --- | --- | --- |
+| OpenAI Docs 搜索并打开 Codex subagents 页面 | PASS | 官方页面可访问；当前本地多 agent 调度也由两个成功任务实际证明 |
+| `Get-Content -Raw`、`rg --files`、`git status/log` | PASS | 必需文档存在；无 `CONTRACTS.md`、`package.json`、`src/` 或 `native/`，符合阶段 0/2 边界；复核开始时 Git 工作树干净 |
+| Windows、Explorer 与 WSL 注册表只读检查 | PASS | Windows 11 专业版 x64 Build 22631，交互会话与 Explorer 存在；仅注册 `docker-desktop` WSL2，未把它当桌面证据 |
+| Node/npm/Git/Python/Ninja/VS 工具检查 | PASS | Node v22.13.1、npm 10.9.2、Git 2.51.0、Python 3.10.9、Ninja 1.10.2；VS 17.13.35825.156 可检测 |
+| `npm ping` 与 TCP 443 | PASS | npm PONG 579 ms、退出 0；registry.npmjs.org:443 连通 |
+| `cmake`、`msbuild`、`cl`、`electron` PATH 检查 | PASS | 均未在当前 PATH 找到；这是已执行的环境盘点，不代表原生构建失败，相关构建仍为 `NOT_RUN` |
+| 两个只读增量复核 agent | PASS | 两个任务均完成并关闭；没有文件写入或接口变化 |
+| Lead 文档与工作树检查 | PASS | 退出 0；diff 仅含 `docs/ACCEPTANCE.md`、`docs/PROGRESS.md`，`git diff --check` 通过，A01-A28 共 28 个且唯一，未生成代码、依赖、数据库、日志、截图或录屏；Git 仅提示未来可能按本机配置将 LF 转为 CRLF |
+
+截图/日志证据：`NOT_RUN`。本轮未启动应用或 Windows GUI 控制，只有命令输出和子 agent 报告保留在当前 Codex 任务记录中。
+
+### 已知问题与下一步
+
+- 桌面宿主、透明/不透明实际模式、连续缩放、DPI、多屏、焦点、Win+D、Explorer 恢复全部仍为 `NOT_RUN`。
+- Electron、`better-sqlite3`、Windows SDK/CMake、原生模块 ABI 与打包加载全部仍为 `NOT_RUN`。
+- 没有发现阻止进入阶段 1 的确定性阻塞；下一步只执行 `prompts/01-desktop-spike.md`，不提前进入契约、数据或完整 UI 阶段。
