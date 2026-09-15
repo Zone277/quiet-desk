@@ -95,3 +95,15 @@
 - 真实中文输入法、DPI/多屏和 Explorer 重启需要后续人工或可控 Windows GUI 环境；在执行前保持 `NOT_RUN`。
 
 下一步只进入 `prompts/01-desktop-spike.md`：由 Lead 统一最小 Electron 脚手架与依赖，Desktop 实现 `DesktopHostAdapter` spike，QA 独立设计/执行桌面测试；不提前进入业务数据或完整 UI。
+
+## GitHub 公开发布（2026-09-15）
+
+| 项目 | 状态 | 结果 |
+| --- | --- | --- |
+| 公开发布前敏感信息检查 | PASS | 对候选文件检查 GitHub token、私钥、常见密码/密钥字段、邮箱、本机用户路径和大文件，未发现待排除内容 |
+| 本地忽略规则 | PASS | 新增 `.gitignore`，覆盖 Node/Electron 依赖与构建产物、SQLite 数据、日志、截图、录屏、本地环境和密钥文件 |
+| 匿名提交元数据 | PASS | 仓库级作者设置为 `QuietDesk Contributors <quiet-desk@users.noreply.github.com>`；未修改 Git 全局身份 |
+| GitHub 仓库 | PASS | 创建公开仓库 `Zone277/quiet-desk`，默认分支为 `main` |
+| 首次推送 | PASS | `main` 已推送；GitHub API 回读的首次提交为 `534b387d58b9306b1a5aa9410ed29e241d67abb7`，作者与本地匿名元数据一致 |
+
+本次没有应用代码、依赖安装、Electron 运行、自动化测试或 Windows GUI 验收；这些状态仍保持 `NOT_RUN`。GitHub 账户所有权本身是公开可见的，匿名元数据只避免提交记录包含本机 Git 姓名和邮箱。
