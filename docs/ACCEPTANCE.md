@@ -50,4 +50,18 @@
 | Daily Log、删除与导出 | A17-A20；A26 的日志语义和 UTF-8 导出部分 | 阶段 5 | 阶段 6、7 | 自动 + SQLite 重启集成；四类汇总、历史快照、幂等、删除/恢复差异和导出文件 |
 | 打包与发布行为 | A23-A28 的发布产物、托盘、离线、范围边界和性能部分 | 阶段 6 | 阶段 7 | Windows 打包产物 + 人工/自动组合；发布命令、产物路径、离线读写、依赖审查、性能方法与未测组合 |
 
-阶段 0 只冻结情境与证据要求，不执行应用验收；截至阶段 0 结束，A01-A28 均为 `NOT_RUN`。
+阶段 0 只冻结情境与证据要求，不执行应用验收。
+
+## 阶段 1 实际状态（2026-09-15）
+
+以下是完整验收项的当前状态；子项通过不会自动把整项写成 `PASS`。
+
+| ID | 状态 | 阶段 1 证据与未覆盖范围 |
+| --- | --- | --- |
+| A01 | NOT_RUN | Windows Build 22631 上真实 Electron 成功挂接 WorkerW，且存活期间独立 inspect 复核为同一父句柄；Win+D、桌面自然露出和普通窗口覆盖均未执行，故整体不是 PASS |
+| A02 | NOT_RUN | 配置为 `skipTaskbar=true`、`alwaysOnTop=false`、`showInactive()`，多次最终状态 `focused=false`；没有任务栏/Alt+Tab 人工证据，也没有前景 HWND 高频采样排除瞬时抢焦点 |
+| A03 | NOT_RUN | fallback 实际点击按钮 3 次并得到计数 3，交互区子项 PASS；连续鼠标拖动/缩放未获得可判定证据，且当前 150% DPI 下 fallback 为 480×423、desktop 为 482×424，精确默认几何子项 FAIL；业务入口属于阶段 3，尚未实现 |
+| A04 | NOT_RUN | 已记录当前单屏 `scaleFactor=1.5`、DPI 144、bounds/workArea；100%/200%、跨屏、移除显示器及视觉命中均未执行 |
+| A05 | NOT_RUN | 已实现 10 秒宿主健康检查、显示器事件重试和明确 fallback；Explorer 重启与睡眠/唤醒未获授权，均未执行 |
+
+平台安全/诊断子检查：`npm run check` 与构建为 `PASS`；`npm run test:platform` 因 A03 精确几何失败而退出 1（4 项测试 2 PASS、2 FAIL）。详细命令、JSON、截图边界与人工步骤见 `docs/DESKTOP-SPIKE.md` 和 `docs/reviews/desktop-spike-test-plan.md`。A06-A28 本阶段仍为 `NOT_RUN`。

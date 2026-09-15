@@ -7,12 +7,13 @@
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | 阶段 0：环境与规格启动 | PASS | 需求、架构、验收路由、分工和实际环境已落盘；Git 仓库已初始化 |
-| 应用代码、Electron 运行与业务测试 | NOT_RUN | 阶段 0 明确不生成应用代码，当前无 `package.json` 或应用入口 |
-| Windows 桌面宿主验收 | NOT_RUN | 当前只有环境信息；未运行 Win+D、覆盖、焦点、DPI 或 Explorer 恢复测试 |
-| SQLite / Electron / Windows 打包 | NOT_RUN | Electron 与 SQLite 驱动未安装，版本尚未锁定 |
-| 产品验收 A01-A28 | NOT_RUN | 本轮只冻结情境与证据要求，没有把规格写成测试通过 |
+| 阶段 1：Windows 桌面宿主 spike | FAIL | 可运行 Electron、WorkerW attach/inspect 和明确 fallback 已实现；150% DPI 精确默认几何失败，关键 Windows GUI 情境仍未执行 |
+| Windows 桌面宿主验收 | NOT_RUN | 原生父子关系子项 PASS；Win+D、覆盖、任务栏/Alt+Tab、连续拖动/缩放和恢复组合没有完整证据 |
+| Electron 构建 | PASS | Electron 44.3.0、electron-vite 5.0.0 与锁文件已落盘；`npm run check`、`npm run build` 退出 0 |
+| SQLite / Windows 打包 | NOT_RUN | 本轮按阶段边界未引入 SQLite 或 electron-builder，也未生成安装包 |
+| 产品验收 A01-A28 | NOT_RUN | A01-A05 只有分项证据且存在精确几何失败；A06-A28 尚未执行，没有把局部诊断写成整项通过 |
 
-当前不是可运行开发预览，也不是已完成桌面小组件。没有发现阻止进入阶段 1 的确定性阻塞；桌面宿主仍是后续完整交付的核心门槛。
+当前是可运行的阶段 1 开发 spike，不是完整业务预览，也不是已完成桌面小组件。纯业务阶段可继续，但 150% DPI 几何偏差与未完成的真实桌面 GUI 验收阻塞最终桌面组件结论。
 
 ## 本阶段完成项
 
@@ -146,3 +147,68 @@
 - 桌面宿主、透明/不透明实际模式、连续缩放、DPI、多屏、焦点、Win+D、Explorer 恢复全部仍为 `NOT_RUN`。
 - Electron、`better-sqlite3`、Windows SDK/CMake、原生模块 ABI 与打包加载全部仍为 `NOT_RUN`。
 - 没有发现阻止进入阶段 1 的确定性阻塞；下一步只执行 `prompts/01-desktop-spike.md`，不提前进入契约、数据或完整 UI 阶段。
+
+## 阶段 1：Windows 桌面宿主与自由缩放 spike（2026-09-15）
+
+### 本阶段完成项
+
+- 锁定 Electron 44.3.0、electron-vite 5.0.0、React 19.3.0、TypeScript 6.0.3、Vite 7.3.6、Vitest 4.1.11，并提交 npm lockfile 所需内容；没有引入 SQLite、业务模型或打包器。
+- 创建最小 main/preload/renderer：无边框、不透明、可缩放诊断窗，明确显示 `DESKTOP ATTACHED` 或 `DEVELOPMENT FALLBACK`；renderer 只经类型化 preload 使用两个受限 IPC。
+- 实现 `DesktopHostAdapter`、窗口状态恢复/原子写入、显示器事件处理和宿主健康检查。Windows bridge 是固定 Python `ctypes` helper，`shell:false`，无 Explorer 注入、无管理员常驻。
+- 在当前 Windows Build 22631 上真实执行 WorkerW 挂接，随后由独立 helper inspect 再次确认同一父 HWND；普通窗口配置没有被当作桌面证明。
+- 用实际 Electron fallback 窗口执行窗口级自动化：可见降级标签和交互按钮，按钮点击三次后计数为 3。CSS 布局已调整，使按钮在默认高度内可见。
+- 修复 TypeScript CSS 类型声明和 renderer 首次调用早于 IPC 注册的竞态；IPC 在窗口加载前注册并等待 controller promise。
+- 创建 `docs/DESKTOP-SPIKE.md` 和 QA 测试计划，更新 A01-A05 的实际状态。
+
+### 真实 agent 分工
+
+| 任务 | Agent | 允许写入 | 实际结果 |
+| --- | --- | --- | --- |
+| Desktop-S1 | Epicurus (`01a0a4ec-dfb4-78e3-b466-15f6e1dbf179`) | `src/main/windows/**`、`src/main/platform/**`、`native/**` | PASS：实现三个限定文件；真实运行取得 WorkerW attach/inspect、最终 `focused=false` 和隔离状态写入证据；如实报告最后样式修复未复测、IPC 竞态及 GUI 未测项 |
+| QA-S1-plan / QA-S1-exec | Carson (`01a0a4ec-e0e4-7833-b917-d3c112c41b63`) | 先仅 `docs/reviews/**`，实现冻结后扩大到 `tests/platform/**` | PASS：设计 15 个用例，执行 4 项平台测试并保留失败断言；最终 2 PASS、2 FAIL，没有修改生产代码或把未测写成通过 |
+| Stage1-Integration | Lead | 根配置、依赖/锁、shared、preload、IPC、入口、最小 renderer、全局文档 | FAIL：完成集成、复测和窗口自动化，但精确几何仍失败；未用 fallback 行为冒充桌面验收 |
+
+两个子 agent 在同一共享工作目录按不重叠所有权工作；没有默认假设独立副本，没有执行 Git 切换、提交或清理用户改动。Lead 在 agent 返回后检查了真实文件并重新运行测试。
+
+### 文件变更
+
+- 根配置：`.gitignore`、`package.json`、`package-lock.json`、`tsconfig.json`、`electron.vite.config.ts`、`vitest.config.ts`。
+- 公共与进程边界：`src/shared/desktop-spike.ts`、`src/preload/index.ts`、`src/main/index.ts`、`src/main/ipc/desktop-spike-ipc.ts`。
+- Desktop：`src/main/windows/desktop-spike-window.ts`、`src/main/platform/desktop-host.ts`、`native/windows_desktop_host.py`。
+- 最小诊断 UI：`src/renderer/index.html`、`src/renderer/src/desktop-spike-api.d.ts`、`src/renderer/src/main.tsx`、`src/renderer/src/App.tsx`、`src/renderer/src/styles.css`。
+- QA 与文档：`tests/platform/desktop-spike.platform.test.ts`、`docs/reviews/desktop-spike-test-plan.md`、`docs/DESKTOP-SPIKE.md`、`docs/ACCEPTANCE.md`、`docs/PROGRESS.md`。
+
+`out/`、`node_modules/`、Python `__pycache__/`、临时 userData 与截图均被忽略，没有作为源码变更。未创建提交。
+
+### 执行命令与真实结果
+
+| 命令/检查 | 状态 | 实际结果 |
+| --- | --- | --- |
+| `npm install`（系统 npm 10.9.2） | FAIL | npm Arborist 抛出 `Cannot read properties of null (reading 'edgesOut')`；未伪称安装成功 |
+| `npx --yes npm@11.19.1 install` | PASS | 安装 115 个包，审计 0 漏洞；`packageManager` 锁定 11.19.1，不修改全局 npm |
+| `npx --yes npm@11.19.1 install-scripts approve --all` | PASS | 固定批准 `@swc/core@1.16.2` 和两版锁定的 esbuild；随后无未审查脚本 |
+| `npx electron --version` / electron-vite / TypeScript | PASS | v44.3.0 / 5.0.0 / 6.0.3，均退出 0 |
+| `npm run check`（Lead 最终） | PASS | 退出 0；早期一次因 CSS 副作用导入缺少 Vite 类型而失败，修复后重跑通过 |
+| `npm run build` | PASS | 退出 0；main、preload、renderer 均构建成功 |
+| Python bridge 非法输入 | PASS | 缺参、非数字、0 和不存在 HWND 均返回单条 JSON 与预期非零退出码 |
+| 真实 Electron desktop 启动 | PASS | 当前 Build 22631、150% / DPI 144；`mode=desktop`、`attached=true`、route `workerw-after-defview`、父类 WorkerW |
+| 独立 native inspect | PASS | Electron 存活时退出 0，回读同一父句柄和 `parentClass=WorkerW` |
+| `npm run test:platform`（Lead 最终） | FAIL | 构建通过；Vitest 4 项中 2 PASS、2 FAIL，退出 1。fallback 480×423、desktop 482×424，未满足 480×420 精确断言 |
+| fallback 交互按钮 | PASS | 实际窗口截图检查；连续点击 3 次，按钮显示 `Interaction count: 3`，没有移动窗口 |
+| CSS 标题拖动和边缘缩放 | NOT_RUN | 窗口级自动化的 drag 没有产生可判定动作，且目标坐标不能超出当前窗口；不能据此判断产品 PASS/FAIL |
+| Win+D、任务栏/Alt+Tab、普通窗口覆盖 | NOT_RUN | 当前自动化规范禁止发送 Windows 键，且 WorkerW 子窗口不在可选顶层窗口清单；未用 fallback 代替 |
+| 100%/200% DPI、跨屏/移除显示器 | NOT_RUN | 只记录当前 150%；未授权更改用户显示环境 |
+| Explorer 重启、睡眠/唤醒 | NOT_RUN | 可能中断用户工作，未获授权，不执行 |
+
+截图证据位于当前 Codex 任务的 Windows 窗口工具记录：一张显示默认 fallback 布局与可见按钮，一张显示 `Interaction count: 3`。未保存到仓库。机器可读诊断通过 `QUIETDESK_DESKTOP_STATUS` 输出，详细摘要见 `docs/DESKTOP-SPIKE.md`；QA 的命令和用例证据见 `docs/reviews/desktop-spike-test-plan.md`。
+
+### 已知问题与下一阶段入口
+
+- `FAIL`：当前 150% DPI 下 Electron frameless thick frame 与 reparent 后的 bounds 存在 3–4 DIP 高度、desktop 额外 2 DIP 宽度偏差，且偏差写入状态文件。没有删除 QA 精确断言；需要后续决定采用 DWM 可见边界归一化、原生 resize hit-test，或其他不牺牲连续缩放的方案。
+- `NOT_RUN`：Win+D、普通窗口覆盖、任务栏/Alt+Tab、瞬时焦点、实际鼠标连续拖动/缩放、跨重启非预设尺寸、100%/200% DPI、多屏、Explorer 重启、睡眠。
+- Python helper 在本机可用但不是自包含发布依赖；`native/` 尚无 electron-builder 资源规则，打包验证为 `NOT_RUN`。
+- QA 创建的临时目录已由测试清理。Lead 创建的若干 `QuietDesk-stage1-*` 隔离 userData 位于系统 `%TEMP%`、仓库外；递归清理请求被安全策略拒绝，未绕过。它们不是真实用户数据，也不会被 Git 收录。
+- WorkerW/Progman/SHELLDLL_DefView 是非公开 Shell 结构。即使当前 attach/inspect 为 PASS，也必须保留健康检查、重试和明确 fallback；最终不能将其描述为稳定 Windows API。
+- 阶段 2 的纯业务契约/数据工作可以继续，但不得把阶段 1 写成完成的桌面组件。若后续阶段需要桌面回归，先按 `docs/DESKTOP-SPIKE.md` 的人工步骤补齐 A01-A05 证据。
+
+本轮到此停止，不提前实现完整业务、SQLite、Markdown、主题、快捷捕获或打包。

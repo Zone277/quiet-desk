@@ -45,3 +45,5 @@ Desktop.ini
 tmp/
 temp/
 *.tmp
+__pycache__/
+*.py[cod]
