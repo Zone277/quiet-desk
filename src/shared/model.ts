@@ -36,9 +36,12 @@ export const utcInstantSchema = z.string().regex(UTC_INSTANT_PATTERN).refine(isC
 export const ianaTimeZoneSchema = z.string().min(1).max(100).refine(isIanaTimeZone, 'Expected an IANA time zone')
 export const markdownSchema = z.string().max(1_000_000)
 export const titleSchema = z.string().trim().min(1).max(500)
+export const entityRevisionSchema = z.number().int().positive().default(1)
+export const entityTypeSchema = z.enum(['task', 'note', 'schedule'])
 
 const entityBaseShape = {
   id: entityIdSchema,
+  revision: entityRevisionSchema,
   createdAtUtc: utcInstantSchema,
   updatedAtUtc: utcInstantSchema,
   deletedAtUtc: utcInstantSchema.nullable()
@@ -89,10 +92,45 @@ export const noteSchema = z.object({
 
 export const captureKindSchema = z.enum(['note', 'task', 'schedule'])
 
+export const captureDraftPayloadSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('note'),
+    title: z.string().max(500),
+    bodyMarkdown: markdownSchema
+  }).strict(),
+  z.object({
+    kind: z.literal('task'),
+    title: titleSchema,
+    bodyMarkdown: markdownSchema,
+    planDate: dateOnlySchema.nullable(),
+    dueDate: dateOnlySchema.nullable()
+  }).strict(),
+  z.object({
+    kind: z.literal('timed-schedule'),
+    title: titleSchema,
+    bodyMarkdown: markdownSchema,
+    startAtUtc: utcInstantSchema,
+    endAtUtc: utcInstantSchema
+  }).strict().refine((value) => value.startAtUtc < value.endAtUtc, {
+    message: 'Timed schedule end must be later than start',
+    path: ['endAtUtc']
+  }),
+  z.object({
+    kind: z.literal('all-day-schedule'),
+    title: titleSchema,
+    bodyMarkdown: markdownSchema,
+    startDate: dateOnlySchema,
+    endDateExclusive: dateOnlySchema
+  }).strict().refine((value) => value.startDate < value.endDateExclusive, {
+    message: 'All-day schedule end date is exclusive and must be later than start date',
+    path: ['endDateExclusive']
+  })
+])
+
 export const draftSchema = z.object({
   id: entityIdSchema,
   captureKind: captureKindSchema,
-  payload: z.record(z.string(), z.unknown()),
+  payload: captureDraftPayloadSchema,
   revision: z.number().int().nonnegative(),
   createdAtUtc: utcInstantSchema,
   updatedAtUtc: utcInstantSchema,
@@ -128,6 +166,56 @@ export const dailyLogSchema = z.object({
   updatedAtUtc: utcInstantSchema
 }).strict()
 
+export const entityRecordSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('task'), value: taskSchema }).strict(),
+  z.object({ type: z.literal('note'), value: noteSchema }).strict(),
+  z.object({ type: z.literal('schedule'), value: scheduleSchema }).strict()
+])
+
+export const operationKindSchema = z.enum([
+  'task.created',
+  'task.updated',
+  'task.completed',
+  'task.reopened',
+  'task.rescheduled',
+  'note.created',
+  'note.updated',
+  'schedule.created',
+  'schedule.updated',
+  'entity.trashed',
+  'entity.restored'
+])
+
+export const operationSnapshotSchema = z.object({
+  operationId: entityIdSchema,
+  sequence: z.number().int().positive(),
+  entityType: entityTypeSchema,
+  entityId: entityIdSchema,
+  operation: operationKindSchema,
+  occurredAtUtc: utcInstantSchema,
+  attributionDate: dateOnlySchema,
+  attributionTimeZone: ianaTimeZoneSchema,
+  entityRevision: z.number().int().positive(),
+  snapshot: entityRecordSchema
+}).strict()
+
+export const trashEntrySchema = z.object({
+  entity: entityRecordSchema,
+  deletedAtUtc: utcInstantSchema
+}).strict()
+
+export const entityMutationReceiptSchema = z.object({
+  entity: entityRecordSchema,
+  changeSequence: z.number().int().positive()
+}).strict()
+
+export const permanentDeleteReceiptSchema = z.object({
+  entityType: entityTypeSchema,
+  entityId: entityIdSchema,
+  permanentlyDeletedAtUtc: utcInstantSchema,
+  changeSequence: z.number().int().positive()
+}).strict()
+
 export type DateOnly = z.infer<typeof dateOnlySchema>
 export type UtcInstant = z.infer<typeof utcInstantSchema>
 export type Task = z.infer<typeof taskSchema>
@@ -136,6 +224,14 @@ export type TimedSchedule = z.infer<typeof timedScheduleSchema>
 export type AllDaySchedule = z.infer<typeof allDayScheduleSchema>
 export type Schedule = z.infer<typeof scheduleSchema>
 export type CaptureKind = z.infer<typeof captureKindSchema>
+export type CaptureDraftPayload = z.infer<typeof captureDraftPayloadSchema>
 export type Draft = z.infer<typeof draftSchema>
 export type DailyLogItem = z.infer<typeof dailyLogItemSchema>
 export type DailyLog = z.infer<typeof dailyLogSchema>
+export type EntityType = z.infer<typeof entityTypeSchema>
+export type EntityRecord = z.infer<typeof entityRecordSchema>
+export type OperationKind = z.infer<typeof operationKindSchema>
+export type OperationSnapshot = z.infer<typeof operationSnapshotSchema>
+export type TrashEntry = z.infer<typeof trashEntrySchema>
+export type EntityMutationReceipt = z.infer<typeof entityMutationReceiptSchema>
+export type PermanentDeleteReceipt = z.infer<typeof permanentDeleteReceiptSchema>

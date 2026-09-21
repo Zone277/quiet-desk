@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { FixedClock, dateInTimeZone, nowUtc } from '../../src/shared/clock'
 import {
   allDayScheduleSchema,
+  captureDraftPayloadSchema,
   dateOnlySchema,
   taskSchema,
   timedScheduleSchema,
@@ -9,13 +10,15 @@ import {
 } from '../../src/shared/model'
 import {
   bootstrapRequestSchema,
-  createNoteRequestSchema
+  createNoteRequestSchema,
+  permanentlyDeleteEntityRequestSchema,
+  saveDraftRequestSchema
 } from '../../src/shared/ipc-contract'
 
 const id = '01234567-89ab-4def-8abc-0123456789ab'
 const instant = '2026-09-21T08:15:30.000Z'
 
-describe('v1 shared contract', () => {
+describe('v2 shared contract', () => {
   test('keeps UTC instants and date-only values distinct', () => {
     expect(utcInstantSchema.safeParse(instant).success).toBe(true)
     expect(utcInstantSchema.safeParse('2026-09-21').success).toBe(false)
@@ -38,6 +41,36 @@ describe('v1 shared contract', () => {
     })
     expect(result.planDate).not.toBe(result.dueDate)
     expect(result.completedAtUtc).toBeNull()
+    expect(result.revision).toBe(1)
+  })
+
+  test('validates typed drafts and exact permanent-delete confirmation', () => {
+    expect(captureDraftPayloadSchema.safeParse({
+      kind: 'task',
+      title: '草稿',
+      bodyMarkdown: '',
+      planDate: null,
+      dueDate: null
+    }).success).toBe(true)
+    expect(saveDraftRequestSchema.safeParse({
+      requestId: id,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: {
+        id,
+        expectedRevision: 0,
+        captureKind: 'note',
+        payload: { kind: 'task', title: 'mismatch', bodyMarkdown: '', planDate: null, dueDate: null }
+      }
+    }).success).toBe(false)
+    expect(permanentlyDeleteEntityRequestSchema.safeParse({
+      requestId: id,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: {
+        entity: { type: 'task', id },
+        expectedRevision: 2,
+        confirmedEntityId: '21234567-89ab-4def-8abc-0123456789ab'
+      }
+    }).success).toBe(false)
   })
 
   test('distinguishes timed and all-day half-open schedules', () => {

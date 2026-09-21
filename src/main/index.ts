@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, nativeTheme } from 'electron'
 import { isAbsolute, resolve } from 'node:path'
 import { FixedClock, SystemClock, type Clock } from '../shared/clock'
 import type { CreateNoteRequest } from '../shared/ipc-contract'
@@ -132,7 +132,8 @@ app.whenReady().then(async () => {
     windows: windowsPromise,
     clock,
     appTimeZone,
-    locale: detectLocale()
+    locale: detectLocale(),
+    resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
   })
 
   try {

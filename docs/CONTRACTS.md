@@ -1,6 +1,8 @@
-# QuietDesk v1 公共契约
+# QuietDesk 公共契约
 
 > 冻结日期：2026-09-21；契约版本：1。本文固定进程边界、时间语义和阶段 2 的最小可执行接口。数据库实现细节可以迁移，但不得改变这里的可观察语义而不升级契约版本。
+
+> 阶段 3 扩展冻结日期：2026-09-21；当前 IPC 契约版本：2。下文第 10 节是兼容以上语义的增量冻结，版本 1 的时间、历史、删除和草稿事务规则继续有效。
 
 ## 1. 所有权与边界
 
@@ -99,3 +101,52 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - schema 迁移使用 `PRAGMA user_version` 顺序执行并在事务中提交。连接启用 foreign keys 和合理 busy timeout；SQL 只允许参数化语句。
 - 阶段 2 的原生门槛是在目标 Electron 运行时完成迁移、写入中英文 Note、读取、关闭连接、重新打开同一库再次读回。普通 Node 结果不能替代。
 - 原生依赖重建与 Electron 测试串行执行，禁止两个 agent 同时重建同一个 `node_modules`。打包产物中的 SQLite 加载仍由阶段 6 验证；没有运行发布产物时必须标为 `NOT_RUN`。
+
+## 10. 阶段 3 IPC v2 扩展
+
+### 10.1 实体 revision 与冲突
+
+- Task、Note、Timed Schedule、All-day Schedule 均具有从 1 开始的整数 `revision`。创建为 1，每次成功编辑、完成、重开、改期、移入回收站或恢复递增一次。
+- 编辑和状态命令必须提供 `expectedRevision`。不匹配返回 `CONFLICT`，不得写实体、历史、change event 或幂等回执。
+- 已完成任务再次完成、未完成任务再次重开、回收站实体直接编辑、未进入回收站就永久删除均返回明确错误，不静默成功。
+- 每个改变持久化状态的命令继续要求 `idempotencyKey`；同键同命令重放原结果，不增加 revision、历史或 change sequence。
+
+### 10.2 查询由主进程分组
+
+- Widget 使用一个聚合快照：当前待办、目标日重叠日程、最近笔记、当天仍处于完成状态的任务，以及每组真实总数。Renderer 不重新实现日期资格或日程重叠规则。
+- 当前待办仅含未删除、未完成，且无计划日或 `planDate <= currentDate` 的任务；昨日任务继续可见但日期字段不改变。未来任务必须有 `planDate > currentDate`。
+- Library 日期快照由主进程返回任务的匹配原因、日程重叠结果和当日笔记。定时日程采用 UTC 半开区间与应用时区日界线重叠；全天日程继续使用 date-only 半开区间。
+- Widget 快照有条目上限但同时返回真实 totals；空间不足显示准确“还有 N 项”，不能靠隐藏整组功能规避小尺寸。
+
+### 10.3 操作快照、回收站与永久删除
+
+- 除草稿逐字保存外，业务 mutation 在同一事务中写入提交后实体快照、change event 和幂等回执。快照保存发生 UTC、当时应用时区、归属日期、实体 revision 和全局稳定 sequence。
+- 移入回收站后普通查询隐藏实体；恢复保持正文、计划日期、截止日期、日程边界和完成状态，不自动改期。
+- 永久删除请求必须携带与目标 ID 完全相等的 `confirmedEntityId`，且目标已在回收站。
+- 永久删除事务清除实体正文、应用管理的操作快照、自动派生项和关联幂等正文。为阻止旧命令恢复已删除内容，可保留不含正文的最小 tombstone/删除回执。
+- 上一条是幂等“同命令返回原结果”的隐私例外：旧回执已去除正文后再次重放返回 `NOT_FOUND` 或 `CONFLICT`，不得重建实体。
+
+### 10.4 草稿与设置
+
+- Draft payload 是 `note`、`task`、`timed-schedule`、`all-day-schedule` 判别联合；`captureKind` 必须与 payload 对应，不能由 renderer 用 `Record<string, unknown>` 猜测。
+- 首次保存使用 `expectedRevision=0`，成功得到 revision 1；后续必须精确匹配。草稿保存产生 `drafts` change event，但不进入操作历史。
+- locale 固定为 `zh-CN | en-US`，theme 固定为 `system | light | dark`；设置存于 SQLite。Bootstrap 同时返回用户 theme 和当前 `resolvedTheme`。
+- 未知系统语言首次启动回退 `en-US`。`system` 的解析由主进程/Electron 提供，renderer 不访问 Node 或 Electron `nativeTheme`。
+
+### 10.5 v2 preload 表面
+
+`window.quietDesk` 只暴露以下命名域和方法：
+
+- `app.bootstrap`
+- `widget.getSnapshot`
+- `library.getDay/getEntity/getHistory/listTrash`
+- `tasks.create/update/setCompletion/reschedule`
+- `notes.create/get/update`
+- `schedules.create/update`
+- `drafts.get/save`
+- `entities.trash/restore/permanentlyDelete`
+- `settings.updateAppearance`
+- `windows.show/hide`
+- `changes.subscribe`
+
+仍禁止通用 invoke/on、SQL、任意路径、文件系统和 shell。窗口 show 只允许 Widget 明确唤起 Capture/Library；Capture 隐藏不等于清空草稿。完整快捷捕获提交、Markdown 预览、Daily Log 和导出不属于阶段 3，不得用静态数据伪装完成。

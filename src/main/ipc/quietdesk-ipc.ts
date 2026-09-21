@@ -35,6 +35,7 @@ interface QuietDeskIpcOptions {
   clock: Clock
   appTimeZone: string
   locale: 'zh-CN' | 'en-US'
+  resolvedTheme: 'light' | 'dark'
 }
 
 function requestIdFrom(value: unknown): string {
@@ -93,14 +94,15 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
         ok: true,
         requestId: parsed.data.requestId,
         value: {
-          contractVersion: IPC_CONTRACT_VERSION,
+        contractVersion: IPC_CONTRACT_VERSION,
           windowKind: senderKind,
           locale: options.locale,
-          theme: 'system',
+        theme: 'system',
+        resolvedTheme: options.resolvedTheme,
           appTimeZone: options.appTimeZone,
           currentDate: dateInTimeZone(options.clock, options.appTimeZone),
           dataRevision: options.service.getDataRevision(),
-          stage: 2,
+        stage: 3,
           implementedCapabilities: [...IMPLEMENTED_CAPABILITIES],
           deferredCapabilities: [...DEFERRED_CAPABILITIES]
         }
