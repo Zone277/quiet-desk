@@ -4,7 +4,7 @@
 
 计划日期：2026-09-21（Asia/Shanghai）
 
-当前状态：`PASS`（测试设计完成）；本文列出的阶段 3 产品测试尚未执行，均为 `NOT_RUN`。
+当前状态：测试设计 `PASS`；阶段 3 QA 自动化已实现。首次真实 Electron 执行在未集成 handler 门槛处 `FAIL`，门槛之后的业务与视觉情境仍为 `NOT_RUN`。
 
 ## 1. 范围、基线与判定边界
 
@@ -166,3 +166,51 @@ npm run test:e2e
 - 接口变化：无；依赖变化：无；生产代码变化：无。
 - 阶段 3 自动测试、Electron 测试、截图生成和视觉检查：`NOT_RUN`，因为本任务范围是测试计划且阶段 3 实现尚未落地。
 - Git 检查、提交和推送：`NOT_RUN`；本任务明确禁止 Git 操作。
+
+## 10. STAGE3-QA-IMPLEMENT 实际结果
+
+### 10.1 自动化文件与固定测试钩子
+
+- `tests/e2e/stage3-harness.mjs`：真实 Electron 启动、三窗口发现、隔离 userData、安全 allowlist、受限 preload 调用、change probe、内容尺寸和核心入口可见性检查。
+- `tests/e2e/stage3-business.mjs`：实现 S3-E01 至 E11 的可执行主链，包括三次独立 Electron 进程、中文长文本任务、完成历史、重开、昨日日期不变、跨午夜与全天日程、跨窗口事件、真实 SQLite 写锁失败、压力数据及四尺寸布局。
+- `tests/e2e/stage3-visual.mjs`：使用真实 IPC 写入基础数据，生成 4 尺寸 × 3 主题 × 2 语言的 24 张 Widget PNG，并逐张记录 SHA-256、DIP/content bounds、像素尺寸、locale/theme/resolvedTheme 和 `inspectionStatus=NOT_RUN`。
+
+自动化依赖下列 renderer 测试钩子；它们来自当前 UI 实现或语义 HTML，不要求 renderer 暴露调试 API：
+
+- 当前待办：`section[aria-labelledby="current-tasks-heading"]`
+- 今日安排：`section[aria-labelledby="today-schedule-heading"]`
+- 最近笔记：`section[aria-labelledby="recent-notes-heading"]`
+- 捕获入口：`[data-testid="open-capture"]`
+- 日期入口：`[data-testid="widget-date"]`
+- 已完成折叠：`[data-testid="completed-today-toggle"]`
+- 主题状态：`html[data-theme][data-theme-preference]`；语言使用 `html[lang]`
+
+### 10.2 已执行命令
+
+| 命令 | 状态 | 实际结果 |
+| --- | --- | --- |
+| `node --check tests/e2e/stage3-harness.mjs` 及两个执行脚本 | PASS | 三个 `.mjs` 均通过 Node 语法检查 |
+| 第一次 `npm run build` | FAIL | 并行 UI 工作区当时已引用但尚未落盘 `src/renderer/src/LibraryView.tsx`；Rollup 报无法解析 `./LibraryView`。QA 未修改生产代码 |
+| 第二次 `npm run build` | PASS | `LibraryView.tsx` 落盘后，main、preload、三个 renderer 入口全部构建成功 |
+| `node tests/e2e/stage3-business.mjs` | FAIL | 真实 Electron 启动、三个 renderer 安全 allowlist 与安全首选项先通过；随后 bootstrap capability 门槛发现 20 个 v2 handler 未集成并非零退出。未进入业务 mutation，未使用 mock |
+| `node tests/e2e/stage3-visual.mjs` | FAIL | 非零退出；缺少 `widget.getSnapshot`、`tasks.create`、`tasks.setCompletion`、`schedules.create`、`settings.updateAppearance` handler；生成 0/24 张截图，manifest 明确记录 `generationStatus=FAIL`、`visualInspectionStatus=NOT_RUN` |
+
+最终复核运行的视觉失败 manifest 位于被 Git 忽略的 `test-results/stage3/2026-09-21T08-51-47-055Z-43301398/manifest.json`。它记录 Electron/Node/SQLite 版本、0/24 截图、失败原因和 `visualInspectionStatus=NOT_RUN`；这是本地运行证据，不是待提交源码，其中的隔离 userData 已由 harness 安全清理。
+
+### 10.3 当前判定与 Lead 集成入口
+
+- 三窗口 renderer Node 全局隔离、contract v2 preload 精确 allowlist、`contextIsolation=true`、`sandbox=true`、`nodeIntegration=false`：`PASS`（业务脚本在 capability 失败前已逐窗执行）。
+- contract v2 handler 集成：`FAIL`。当前 bootstrap 只报告 `app.bootstrap`、`notes.create`、`notes.get`、`changes.subscribe`；业务脚本列出的其余 20 个能力均缺失。
+- 中文任务、完整进程重启、完成历史、重开、昨日不改期、跨午夜/全天双日、跨窗业务刷新、空状态、大量条目、长文本和四尺寸业务断言：`NOT_RUN`，因为测试在 handler 门槛停止。
+- SQLite 写锁保存失败与释放后重试：代码已实现，但没有越过 handler 门槛，状态为 `NOT_RUN`。该测试只覆盖真实 IPC 事务回滚和事件边界；Capture 输入保留仍需在 Lead 接好 handler 后补充 UI 触发链，当前不宣称通过。
+- 视觉截图生成：`FAIL`（0/24）；视觉逐图检查：`NOT_RUN`。没有把失败 manifest 或空截图目录写成视觉通过。
+- Git 检查、提交和推送：`NOT_RUN`；`STAGE3-QA-IMPLEMENT` 明确禁止 QA 执行 Git。
+
+Lead 接入 Data 服务与全部 v2 IPC handler 后，先执行 `npm run build`，再串行执行：
+
+```text
+node tests/e2e/stage3-business.mjs
+node tests/e2e/stage3-visual.mjs
+```
+
+视觉脚本成功只代表 24 张图生成完毕。Lead 仍须用图像工具逐张打开检查，并另外写入视觉审查记录，才能更新 `visualInspectionStatus`。
