@@ -77,12 +77,16 @@ describe('NoteStorageService', () => {
         ORDER BY name
       `).all() as Array<{ name: string }>
 
-      expect(version.user_version).toBe(1)
+      expect(version.user_version).toBe(2)
       expect(tables.map(({ name }) => name)).toEqual([
         'app_settings',
         'change_events',
+        'drafts',
         'idempotency_receipts',
-        'notes'
+        'notes',
+        'operation_history',
+        'schedules',
+        'tasks'
       ])
     } finally {
       database.close()
