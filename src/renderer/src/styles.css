@@ -1,0 +1,276 @@
+:root {
+  color: #20231f;
+  background: transparent;
+  font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  padding: 8px;
+  background: #dfe5dc;
+}
+
+button,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 18px;
+  overflow: hidden;
+  border: 2px solid #8a6a34;
+  border-radius: 24px;
+  background: #f6f3e9;
+  box-shadow: 0 16px 50px rgb(37 46 34 / 18%);
+}
+
+.app-shell-capture {
+  border-color: #6a618b;
+  background: #f4f0f7;
+}
+
+.app-shell-library {
+  border-color: #426b76;
+  background: #edf3f2;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+  cursor: move;
+  user-select: none;
+}
+
+.window-header,
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow,
+.status-label,
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+.eyebrow,
+.status-label {
+  color: #62675f;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin-top: 3px;
+  font-size: clamp(22px, 5vw, 32px);
+  letter-spacing: -0.035em;
+}
+
+h2 {
+  margin-top: 3px;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.window-description {
+  max-width: 560px;
+  margin-top: 4px;
+  color: #596057;
+  font-size: 12px;
+}
+
+.window-kind-badge,
+.status-chip {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid rgb(44 53 42 / 12%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 65%);
+  color: #4f574e;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.content-stack {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.panel {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgb(44 53 42 / 12%);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 62%);
+}
+
+.panel > p:not(.status-label),
+.capability-note {
+  margin-top: 8px;
+  color: #555e54;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.runtime-grid div {
+  min-width: 0;
+}
+
+.runtime-grid .wide {
+  grid-column: 1 / -1;
+}
+
+dt {
+  color: #6a7168;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  font: 11px/1.35 Consolas, "Cascadia Mono", monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capability-note {
+  overflow-wrap: anywhere;
+}
+
+.mode-dot {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #b37820;
+  box-shadow: 0 0 0 5px rgb(179 120 32 / 15%);
+}
+
+.mode-dot-desktop {
+  background: #25805f;
+  box-shadow: 0 0 0 5px rgb(37 128 95 / 15%);
+}
+
+.interaction-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  color: white;
+  background: #276b54;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+button.secondary {
+  color: #30352f;
+  background: #e0e4dc;
+}
+
+button:focus-visible {
+  outline: 3px solid #496ec9;
+  outline-offset: 2px;
+}
+
+.shell-notice ul {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: #555e54;
+  font-size: 12px;
+}
+
+.error-panel,
+.error-text {
+  color: #922f2b;
+}
+
+footer {
+  overflow: hidden;
+  color: #666d63;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 390px), (max-height: 300px) {
+  body {
+    padding: 4px;
+  }
+
+  .app-shell {
+    gap: 7px;
+    padding: 11px;
+    border-radius: 18px;
+  }
+
+  .window-description,
+  footer {
+    display: none;
+  }
+
+  .panel {
+    padding: 8px;
+  }
+
+  .runtime-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .runtime-grid .wide {
+    grid-column: auto;
+  }
+}
