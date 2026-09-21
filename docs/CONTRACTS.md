@@ -146,7 +146,16 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - `drafts.get/save`
 - `entities.trash/restore/permanentlyDelete`
 - `settings.updateAppearance`
-- `windows.show/hide`
+- `windows.show/hide/subscribeContext`
 - `changes.subscribe`
 
 仍禁止通用 invoke/on、SQL、任意路径、文件系统和 shell。窗口 show 只允许 Widget 明确唤起 Capture/Library；Capture 隐藏不等于清空草稿。完整快捷捕获提交、Markdown 预览、Daily Log 和导出不属于阶段 3，不得用静态数据伪装完成。
+
+### 10.6 阶段 3 集成澄清
+
+- Draft 是未完成输入，不受正式实体的必填约束：task draft 的标题可以为空；timed/all-day schedule draft 的起止边界可以为 `null`。正式 `tasks.create`、`notes.create`、`schedules.create` 继续使用严格 schema，不能提交空标题或不完整边界。
+- Renderer 的 `datetime-local` 文本必须按 bootstrap 返回的 IANA `appTimeZone` 转为 UTC；不得隐式使用运行进程的系统本地时区。主进程仍负责按应用时区进行按日重叠和归属日期计算。
+- `windows.subscribeContext(listener)` 是 v2 的窄窗口上下文订阅：Widget 通过受校验的 `windows.show({ window: 'library', context: { selectedDate } })` 打开 Library 时，主进程只向目标窗口发送已校验的 date-only 值。它不替代业务 change stream，也不开放通用窗口消息。
+- 主进程提交成功后才广播 change event；幂等回放、冲突、校验失败和 SQLite 事务回滚不得再次广播。Renderer 收到较新 sequence 后重取主进程聚合快照，不自行合并业务真相。
+- `settings.updateAppearance` 成功后同时持久化 locale/theme，并由主进程更新 Electron `nativeTheme.themeSource`；`resolvedTheme` 继续来自 Electron。运行中真实 Windows 外观切换仍需独立验收。
+- 阶段 3 已实现 v2 表面和 schema v2，但不扩大范围到 Daily Log、Markdown 渲染、全局快捷键或自然语言解析。任何 v3 修改仍由 Lead 先更新本文、`src/shared`、preload 与契约测试。

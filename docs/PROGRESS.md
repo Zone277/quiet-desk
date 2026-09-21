@@ -1,6 +1,6 @@
 # QuietDesk 进度
 
-更新日期：2026-09-15（Asia/Shanghai）
+更新日期：2026-09-21（Asia/Shanghai）
 
 ## 当前结论
 
@@ -8,12 +8,14 @@
 | --- | --- | --- |
 | 阶段 0：环境与规格启动 | PASS | 需求、架构、验收路由、分工和实际环境已落盘；Git 仓库已初始化 |
 | 阶段 1：Windows 桌面宿主 spike | FAIL | 可运行 Electron、WorkerW attach/inspect 和明确 fallback 已实现；150% DPI 精确默认几何失败，关键 Windows GUI 情境仍未执行 |
+| 阶段 2：脚手架、契约与存储 | PASS | 三窗口安全壳、IPC v1、真实 Electron SQLite 关闭重开与 Windows portable 构建已有证据 |
+| 阶段 3：核心数据与 Widget | PASS | IPC v2、事务化 Task/Note/Schedule/Draft、真实 Widget/Capture/Library、业务 E2E 和 24 张逐图视觉检查完成 |
 | Windows 桌面宿主验收 | NOT_RUN | 原生父子关系子项 PASS；Win+D、覆盖、任务栏/Alt+Tab、连续拖动/缩放和恢复组合没有完整证据 |
-| Electron 构建 | PASS | Electron 44.3.0、electron-vite 5.0.0 与锁文件已落盘；`npm run check`、`npm run build` 退出 0 |
-| SQLite / Windows 打包 | NOT_RUN | 本轮按阶段边界未引入 SQLite 或 electron-builder，也未生成安装包 |
-| 产品验收 A01-A28 | NOT_RUN | A01-A05 只有分项证据且存在精确几何失败；A06-A28 尚未执行，没有把局部诊断写成整项通过 |
+| Electron 构建 | PASS | Electron 44.4.3、Node 24.21.0、electron-vite 5.0.0；阶段 3 最终 `check`、`build`、integration、E2E 均退出 0 |
+| SQLite / Windows 打包 | NOT_RUN | 开发 Electron 内 SQLite 3.53.4 读写/进程重启为 PASS，阶段 2 portable 构建为 PASS；发布产物内部读写仍未执行，完整项保持 NOT_RUN |
+| 产品验收 A01-A28 | NOT_RUN | A07、A08、A15 已有 PASS；其余含局部证据或留待后续阶段，且 A01-A05 桌面门槛仍未完成 |
 
-当前是可运行的阶段 1 开发 spike，不是完整业务预览，也不是已完成桌面小组件。纯业务阶段可继续，但 150% DPI 几何偏差与未完成的真实桌面 GUI 验收阻塞最终桌面组件结论。
+当前是连接真实 SQLite 的阶段 3 业务开发预览，不是已完成桌面小组件。核心数据与三窗口 UI 可运行，但 150% DPI 几何偏差与未完成的真实桌面 GUI 验收继续阻塞最终桌面组件结论。
 
 ## 本阶段完成项
 
@@ -278,3 +280,75 @@
 - 阶段 3 入口：沿用 CONTRACTS v1，由 Data/UI 在现有所有权下实现任务、笔记和日程核心闭环；任何共享类型或 IPC 扩展先由 Lead 更新契约。
 
 本轮到此停止，不提前实现阶段 3 业务。
+
+## 阶段 3：核心数据层与 Widget 界面（2026-09-21）
+
+### 本阶段完成项
+
+- Lead 先将 IPC/模型契约升级并冻结为 v2，再开放不重叠写入目录；Data、UI 与 QA 最多三个 agent 同时工作，公共类型、preload、IPC、依赖和锁文件始终由 Lead 维护。
+- Data 实现 Task、Note、Timed/All-day Schedule、Draft 的创建/编辑、完成/重开/改期、按日查询、当前/未来任务、回收站/恢复/确认永久删除、操作快照和事务化变更事件。SQL 值全部参数化；永久删除清除应用管理的关联正文。
+- UI 实现原创 Sonoma 氛围的 Widget、Capture、Library，连接真实 preload API；支持中文/英文、浅色/深色/跟随系统、日期浏览、折叠的今日已完成，以及 320×240、480×420、720×720 和 437×386 非预设尺寸。
+- Lead 集成全部 v2 handler、运行时校验、请求幂等、乐观 revision、提交后跨窗口事件、窗口日期上下文与 Electron `nativeTheme`。Renderer 不接触 Node、SQLite、文件系统、任意 IPC 或 shell。
+- 测试使用隔离临时 userData 和固定上海时区 Clock，真实证明中文任务跨 Electron 进程恢复、完成历史、重开、昨日任务不改期、跨午夜与全天日程双日可见、真实 SQLite 写锁回滚/重试，以及压力数据下四种尺寸的核心入口。
+- 最终视觉矩阵为 4 尺寸 × 3 主题 × 2 语言，共 24 张 PNG；Lead 逐张实际打开检查并在同目录写入审查记录。测试产物被 Git 忽略，没有混入源码提交。
+
+### 真实 agent 分工
+
+| 任务 | Agent | 允许写入 | 实际结果 |
+| --- | --- | --- | --- |
+| DATA-S3-DISCOVERY / IMPLEMENT | Avicenna (`01a0c312-5561-7362-b5d6-41836ac1c7b6`) | 先只读；冻结后仅 `src/domain/**`、`src/main/data/**`、`src/main/services/**`、`tests/data/**` | PASS：实现 schema v2、CoreDataService、事务/历史/回收站与 19 个 Data 测试；未改公共契约、preload、IPC 或依赖 |
+| UI-S3-DISCOVERY / IMPLEMENT | Raman (`01a0c312-5689-7da3-9372-fee4a8106849`) | 先只读；冻结后仅 `src/renderer/**` 及局部 UI 测试 | PASS：实现三窗口真实 API 界面、tokens、国际化、主题和响应式布局；未引入 mock/localStorage 作为产品路径 |
+| QA-S3-DESIGN / IMPLEMENT | Peirce (`01a0c312-57c0-7b80-9854-81504a46aad9`) | `tests/e2e/**`、`tests/platform/**`、`docs/reviews/**`；不改生产代码 | PASS：独立设计并实现真实 Electron 业务/视觉 harness；先如实报告 handler 未接线时的 FAIL，Lead 集成后由 Lead 完成最终复跑与逐图检查 |
+| Stage3-Integration | Lead | 根配置、`src/shared/**`、`src/preload/**`、`src/main/ipc/**`、主入口、全局文档 | PASS：冻结契约、接线 Data/UI、修复时区/草稿/小尺寸/安全测试问题，复核 agent 文件并提交推送所有增量 |
+
+三个子 agent 在同一工作目录按文件所有权工作，没有默认假设独立副本；没有并行重建原生依赖。所有 agent 在 Lead 集成前后均已等待并关闭。
+
+### 文件变更
+
+- 契约与边界：`src/shared/model.ts`、`ipc-channels.ts`、`ipc-contract.ts`、`src/preload/index.ts`、`docs/CONTRACTS.md`。
+- Data/domain：`src/domain/**`、`src/main/data/**`、`src/main/services/**`、`tests/data/**`。
+- 主进程集成：`src/main/index.ts`、`src/main/ipc/**`、窗口上下文与主题接线；沿用阶段 1 `DesktopHostAdapter`，没有创建第二套宿主。
+- UI：`src/renderer/**` 的 Widget、Capture、Library、设计 tokens、locale/theme 与真实 API hooks。
+- QA：`tests/e2e/stage3-harness.mjs`、`stage3-business.mjs`、`stage3-visual.mjs`，以及阶段 2 窗口安全回归整合。
+- 构建/文档：`package.json` 脚本、`docs/ACCEPTANCE.md`、`docs/PROGRESS.md`、`docs/reviews/stage3-test-plan.md`。
+
+### 执行命令与真实结果
+
+| 命令/检查 | 状态 | 实际结果 |
+| --- | --- | --- |
+| `npm run check` | PASS | 退出 0；TypeScript 与 7/7 公共契约测试通过 |
+| `npx vitest run tests/data` | PASS | 退出 0；2 个文件、19/19，用固定 Clock 覆盖 CRUD、事务、历史、查询、草稿和删除 |
+| `npm run test:integration` | PASS | 退出 0；两个独立 Electron 进程对同一隔离库写入/关闭/重开/读回；Electron 44.4.3、Node 24.21.0、SQLite 3.53.4 |
+| `npm run test:e2e`（最终） | PASS | 退出 0；窗口安全回归和阶段 3 业务均通过；最终业务运行使用 3 个独立 PID，并覆盖 160 个任务、60 个日程、40 个笔记的压力数据 |
+| 阶段 3 业务 E2E 的过程性运行 | FAIL | 集成前先因 20 个 v2 handler 未接线退出；集成中另有一次页面在压力播种期间意外关闭。未降低断言；修复/重跑后的完整最终命令为 PASS |
+| `npm run build` | PASS | 退出 0；main、preload 和 Widget/Capture/Library 全部构建成功 |
+| 阶段 3 视觉生成 | PASS | 最终 run `test-results/stage3/2026-09-21T09-19-37-659Z-b79cf055` 生成 24/24；manifest 记录 Electron/Node/SQLite、150% 缩放、内容尺寸和 SHA-256 |
+| 阶段 3 视觉逐图检查 | PASS | 24/24 PNG 均以图像工具实际打开；`visual-review.md` 与 manifest 逐项为 PASS，无水平溢出，四个核心入口在最小尺寸可发现，浅/深/system 与中英文可读 |
+| 320×240 几何 | PASS | 当前 150% 缩放下请求 320×240、实际内容 320×241；harness 仅允许并记录 Windows/Electron 1 DIP 舍入，超过 1 DIP 会失败 |
+| `npm run test:platform` | FAIL | 本阶段末重新执行，退出 1、2/4 通过：Windows Build 22631、150% 下 fallback 480×423、desktop 482×424，仍不满足精确 480×420；没有修改 Desktop 适配器或把普通窗口当宿主 |
+| `npm run dist:win`（本阶段） | NOT_RUN | 阶段 2 曾成功生成 portable；阶段 3 未重新打包或在发布产物内执行新业务 SQLite 闭环 |
+
+所有运行数据位于 harness 创建的隔离目录；正式数据未被访问。最终视觉证据位于被忽略的本地路径 `test-results/stage3/2026-09-21T09-19-37-659Z-b79cf055/`，不会随 Git 推送。
+
+### GitHub 增量交付
+
+本阶段功能按增量提交并推送到 `origin/main`：
+
+- `6fca746`、`08163cb`：恢复/补充工程契约和独立 QA 计划。
+- `6f57eb9`、`213941b`：冻结 IPC v2 与强制显式乐观 revision。
+- `e1bff66`：加入真实 Electron 阶段 3 验收 harness。
+- `c2c7b74`：事务化阶段 3 Data/domain。
+- `181d43e`：三窗口阶段 3 UI。
+- `0a2fe81`：Lead IPC、窗口更新、时区、安全与最终业务集成。
+
+### 未验证、已知问题与下一阶段入口
+
+- `FAIL`：阶段 1 的 150% DPI 精确桌面窗口几何回归仍失败；`NOT_RUN`：Win+D、普通窗口覆盖、任务栏/Alt+Tab、真实鼠标连续拖动/缩放、多屏/DPI 组合、Explorer 重启与睡眠。阶段 3 PASS 不能替代这些证据。
+- `NOT_RUN`：Windows 系统外观在应用运行时实时切换、真实中文输入法候选确认、Ctrl+Enter 提交、全局快捷捕获和 Markdown 预览；这些属于后续阶段。
+- `NOT_RUN`：Capture 在真实存储失败时的“可见输入仍保留”截图。真实 SQLite 写锁下事务回滚、无事件和释放后重试为 PASS，但 UI 触发链没有视觉证据。
+- `NOT_RUN`：QA 扩展截图中的 Capture/Library 空状态、保存失败、键盘焦点、今日已完成展开态与 100%/200% DPI；本轮 24 张 Widget 基础矩阵已经逐图检查，但不冒充这些扩展状态。
+- `NOT_RUN`：Daily Log 生成、补生成、Markdown 导出和日志删除传播；阶段 3 只提供后续历史还原需要的稳定操作快照。
+- `node:sqlite` 仍打印实验性警告；Electron 升级及阶段 6 打包产物必须重新执行读写、重启、中文/空格路径和离线测试。
+- 下一阶段入口是阶段 4：在现有草稿/实体事务与真实 UI 上完成快捷捕获、IME/Ctrl+Enter 行为和安全 Markdown 预览，不提前实现阶段 5 Daily Log。
+
+本轮到此停止，不提前执行阶段 4。

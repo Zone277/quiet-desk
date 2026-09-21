@@ -83,3 +83,26 @@
 | A01-A05 | NOT_RUN | 本轮保留阶段 1 适配器；回归仍因 150% DPI 精确几何失败。Win+D、覆盖、任务栏/Alt+Tab、连续鼠标缩放、多屏、Explorer/睡眠仍没有新增证据 |
 
 命令证据见 `docs/PROGRESS.md` 阶段 2。完整 CRUD、Markdown/IME、Daily Log、删除传播、导出、主题和快捷键均未在本阶段执行。
+
+## 阶段 3 实际状态（2026-09-21）
+
+状态按完整验收情境判断；自动子项通过不会替代 Windows 人工桌面、IME、Daily Log 或发布产物证据。
+
+| ID / 门槛 | 状态 | 阶段 3 证据与未覆盖范围 |
+| --- | --- | --- |
+| A03 | NOT_RUN | 内容子项 PASS：真实 Widget 在 320×240、480×420、720×720、437×386 均保留当前待办、今日安排、最近笔记和捕获入口且无水平溢出；实际鼠标连续缩放、拖动和重启恢复仍未执行，阶段 1 精确桌面几何仍 FAIL |
+| A06 | NOT_RUN | 4 尺寸 × 3 主题 × 2 语言的 24 张 Widget 截图已逐图检查为 PASS，设置经 SQLite 持久化；运行中切换 Windows 系统外观、屏幕阅读器、高对比度、减少动画和完整键盘焦点组合未执行 |
+| A07 | PASS | 固定 Asia/Shanghai Clock、Data 测试与真实 Electron E2E 证明昨日未完成任务继续出现在当前待办，`planDate`/`dueDate` 原值不变；未来任务由主进程查询规则隔离 |
+| A08 | PASS | 中文任务经 preload/IPC 写入 SQLite，关闭第一 Electron 进程后由第二进程读回；完成快照保留，重开后重新进入符合日期的待办，历史 sequence 稳定 |
+| A09 | NOT_RUN | 实体移入回收站、普通查询隐藏和恢复正文/日期/状态的 Data 子项 PASS；Daily Log 隐藏/恢复重建尚未实现 |
+| A10 | NOT_RUN | 明确 ID 确认、事务化永久删除、实体正文/操作快照/回执正文清除子项 PASS；Daily Log 再生成与新导出属于阶段 5，未执行 |
+| A12 | NOT_RUN | Draft SQLite 持久化、revision 冲突、事务失败保留和真实写锁回滚子项 PASS；Esc/失焦/重启 UI、快速重复提交及失败后可见输入保留未完成整体验收 |
+| A14 | NOT_RUN | 提交后跨窗口 sequence/重取与监听取消机制、多个窗口实际接收更新子项 PASS；完整“创建/完成/恢复”三动作同时观察和监听泄漏压力未作为一个完整情境执行 |
+| A15 | PASS | Data 测试和真实 Electron E2E 证明 23:30–00:30 UTC 区间按应用时区日界线在两个日期各出现一次、相邻日不出现；全天 date-only 半开区间排除结束日 |
+| A16 | NOT_RUN | Library 日期上下文和未来日期查询已接真实 API；“过去日程仍标为计划”的完整 UI 往返情境没有独立执行记录 |
+| A22 | NOT_RUN | 三窗口 `process/require/Buffer/module` 均不可用，preload 精确 allowlist、运行时 schema、sender 授权和安全首选项为 PASS；独立未登记 webContents 的完整攻击情境仍未执行 |
+| A23 | PASS | schema v2、Unicode、关闭重开和独立 Electron 进程恢复均使用隔离临时目录通过；普通启动不注入 fixture/demo 数据 |
+| A24 | NOT_RUN | 开发 Electron 44.4.3 / Node 24.21.0 / SQLite 3.53.4 内真实读写为 PASS；阶段 3 发布产物内读写未执行 |
+| A01-A05 桌面门槛 | NOT_RUN | 沿用阶段 1 WorkerW 适配器；本轮没有用 ordinary fallback 或 renderer 截图替代 Win+D、覆盖、任务栏/Alt+Tab、连续鼠标缩放、多屏或 Explorer/睡眠验证 |
+
+阶段 3 最终命令与截图 run 路径见 `docs/PROGRESS.md`；详细 QA 判定见 `docs/reviews/stage3-test-plan.md`。A11/A13/A17-A21/A25-A28 没有因阶段 3 的局部能力而提前标为通过。

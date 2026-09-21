@@ -214,3 +214,24 @@ node tests/e2e/stage3-visual.mjs
 ```
 
 视觉脚本成功只代表 24 张图生成完毕。Lead 仍须用图像工具逐张打开检查，并另外写入视觉审查记录，才能更新 `visualInspectionStatus`。
+
+## 11. Lead 集成后的最终复核
+
+本节保留第 10 节的首次失败作为真实过程证据，并记录 Lead 完成 IPC/Data/UI 接线后的最终状态；不是覆盖或改写早期结果。
+
+| 检查 | 状态 | 最终证据 |
+| --- | --- | --- |
+| S3-D01 至 S3-D12 | PASS | `npx vitest run tests/data` 退出 0，2 个文件、19/19；覆盖事务、幂等、乐观 revision、日期查询、操作快照、草稿、回收站和永久删除 |
+| S3-E01 至 S3-E11 | PASS | `npm run test:e2e` 最终退出 0；三次独立 Electron 进程，中文任务跨进程恢复、完成/重开历史、昨日不改期、跨午夜/全天双日、跨窗口事件、真实写锁回滚和压力布局通过 |
+| Electron 存储烟雾 | PASS | `npm run test:integration` 退出 0；Electron 44.4.3、Node 24.21.0、SQLite 3.53.4，独立进程关闭重开读回 |
+| 三窗口安全边界 | PASS | Widget/Capture/Library 均为 `contextIsolation=true`、`sandbox=true`、`nodeIntegration=false`；renderer 中 `process/require/Buffer/module` 不可用，preload API 与 v2 allowlist 精确一致 |
+| 基础视觉矩阵生成 | PASS | `test-results/stage3/2026-09-21T09-19-37-659Z-b79cf055/manifest.json` 记录 24/24 PNG、150% scaleFactor、四种 DIP 尺寸、三主题、两语言和 SHA-256 |
+| 基础视觉矩阵逐图检查 | PASS | Lead 使用图像查看工具打开全部 24 张；同目录 `visual-review.md` 和 manifest 中 24 项均为 PASS。无水平溢出，四个核心区和捕获入口在最小尺寸可发现，主题与中英文可读 |
+| 保存失败事务边界 | PASS | 真实 SQLite 写锁导致 mutation 失败；实体、operation、receipt、change 均未新增，未广播事件；释放锁后同路径重试成功 |
+| 保存失败后的 Capture 可见输入 | NOT_RUN | 上一项只证明主进程/SQLite 边界；没有从 Capture 表单触发并保存“错误提示 + 输入保留”截图，不扩大结论 |
+| 扩展状态截图 | NOT_RUN | Capture/Library 空状态、保存失败、键盘焦点、已完成展开态及 100%/200% DPI 的扩展截图未全部生成和逐图检查 |
+| Windows 系统/桌面人工项 S3-M01 至 M06 | NOT_RUN | 未改变用户系统主题、DPI 或 Explorer，也未发送 Win+D、执行真实鼠标连续缩放或中文 IME 候选确认 |
+
+压力运行实际写入 160 个任务（40 个完成、120 个当前压力任务）、60 个日程和 40 个笔记。请求 320×240 时当前 150% Windows 缩放下得到 320×241 内容尺寸；测试仅允许并记录 1 DIP 平台舍入，超过 1 DIP 会失败。这一 renderer 证据不取消阶段 1 桌面窗口精确几何的 `FAIL`。
+
+最终业务 run 中出现过一次压力播种期间页面意外关闭，状态为 `FAIL`；没有通过放宽断言处理。之后完整 `npm run test:e2e` 重跑为 `PASS`。最终 visual run 的 24 张图均来自真实 preload/IPC/SQLite 数据，不是 fixture、mock、localStorage 或静态卡片。
