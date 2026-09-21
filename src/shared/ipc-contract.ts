@@ -278,6 +278,11 @@ export const hideWindowRequestSchema = requestEnvelope(
   z.object({ target: z.enum(['capture', 'library']) }).strict()
 )
 
+export const windowOpenContextSchema = z.object({
+  target: z.literal('library'),
+  selectedDate: dateOnlySchema
+}).strict()
+
 export const appearanceSettingsSchema = z.object({
   locale: localeSchema,
   theme: themeSchema
@@ -344,6 +349,7 @@ export type PermanentlyDeleteEntityRequest = z.infer<typeof permanentlyDeleteEnt
 export type UpdateAppearanceRequest = z.infer<typeof updateAppearanceRequestSchema>
 export type ShowWindowRequest = z.infer<typeof showWindowRequestSchema>
 export type HideWindowRequest = z.infer<typeof hideWindowRequestSchema>
+export type WindowOpenContext = z.infer<typeof windowOpenContextSchema>
 export type GetWidgetSnapshotRequest = z.infer<typeof getWidgetSnapshotRequestSchema>
 export type GetDayViewRequest = z.infer<typeof getDayViewRequestSchema>
 export type GetEntityRequest = z.infer<typeof getEntityRequestSchema>
@@ -398,6 +404,7 @@ export interface QuietDeskApi {
   windows: {
     show(request: ShowWindowRequest): Promise<IpcResult<{ shown: true }>>
     hide(request: HideWindowRequest): Promise<IpcResult<{ hidden: true }>>
+    subscribeContext(listener: (context: WindowOpenContext) => void): () => void
   }
   changes: {
     subscribe(listener: (event: ChangeEvent) => void): () => void

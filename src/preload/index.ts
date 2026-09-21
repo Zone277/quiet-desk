@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { DESKTOP_SPIKE_CHANNELS, type DesktopSpikeApi } from '../shared/desktop-spike'
 import { QUIETDESK_CHANNELS } from '../shared/ipc-channels'
-import type { ChangeEvent, QuietDeskApi } from '../shared/ipc-contract'
+import type { ChangeEvent, QuietDeskApi, WindowOpenContext } from '../shared/ipc-contract'
 
 const desktopSpikeApi: DesktopSpikeApi = Object.freeze({
   getStatus: () => ipcRenderer.invoke(DESKTOP_SPIKE_CHANNELS.getStatus),
@@ -50,7 +50,17 @@ const quietDeskApi: QuietDeskApi = {
   },
   windows: {
     show: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.showWindow, request),
-    hide: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.hideWindow, request)
+    hide: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.hideWindow, request),
+    subscribeContext: (listener: (context: WindowOpenContext) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: WindowOpenContext): void => listener(payload)
+      ipcRenderer.on(QUIETDESK_CHANNELS.windowContext, handler)
+      let subscribed = true
+      return () => {
+        if (!subscribed) return
+        subscribed = false
+        ipcRenderer.removeListener(QUIETDESK_CHANNELS.windowContext, handler)
+      }
+    }
   },
   changes: {
     subscribe: (listener: (event: ChangeEvent) => void) => {

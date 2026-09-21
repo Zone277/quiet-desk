@@ -100,28 +100,32 @@ export const captureDraftPayloadSchema = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({
     kind: z.literal('task'),
-    title: titleSchema,
+    title: z.string().max(500),
     bodyMarkdown: markdownSchema,
     planDate: dateOnlySchema.nullable(),
     dueDate: dateOnlySchema.nullable()
   }).strict(),
   z.object({
     kind: z.literal('timed-schedule'),
-    title: titleSchema,
+    title: z.string().max(500),
     bodyMarkdown: markdownSchema,
-    startAtUtc: utcInstantSchema,
-    endAtUtc: utcInstantSchema
-  }).strict().refine((value) => value.startAtUtc < value.endAtUtc, {
+    startAtUtc: utcInstantSchema.nullable(),
+    endAtUtc: utcInstantSchema.nullable()
+  }).strict().refine((value) => (
+    value.startAtUtc === null || value.endAtUtc === null || value.startAtUtc < value.endAtUtc
+  ), {
     message: 'Timed schedule end must be later than start',
     path: ['endAtUtc']
   }),
   z.object({
     kind: z.literal('all-day-schedule'),
-    title: titleSchema,
+    title: z.string().max(500),
     bodyMarkdown: markdownSchema,
-    startDate: dateOnlySchema,
-    endDateExclusive: dateOnlySchema
-  }).strict().refine((value) => value.startDate < value.endDateExclusive, {
+    startDate: dateOnlySchema.nullable(),
+    endDateExclusive: dateOnlySchema.nullable()
+  }).strict().refine((value) => (
+    value.startDate === null || value.endDateExclusive === null || value.startDate < value.endDateExclusive
+  ), {
     message: 'All-day schedule end date is exclusive and must be later than start date',
     path: ['endDateExclusive']
   })

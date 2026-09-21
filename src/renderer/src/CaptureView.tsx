@@ -44,11 +44,10 @@ function captureKind(kind: FormKind): CaptureKind {
   return kind === 'note' ? 'note' : kind === 'task' ? 'task' : 'schedule'
 }
 
-function toPayload(form: CaptureForm): CaptureDraftPayload | null {
+function toPayload(form: CaptureForm, timeZone: string): CaptureDraftPayload {
   if (form.kind === 'note') {
     return { kind: 'note', title: form.title, bodyMarkdown: form.bodyMarkdown }
   }
-  if (!form.title.trim()) return null
   if (form.kind === 'task') {
     return {
       kind: 'task',
@@ -59,9 +58,8 @@ function toPayload(form: CaptureForm): CaptureDraftPayload | null {
     }
   }
   if (form.kind === 'timed-schedule') {
-    const startAtUtc = fromDateTimeLocal(form.timedStart)
-    const endAtUtc = fromDateTimeLocal(form.timedEnd)
-    if (!startAtUtc || !endAtUtc || startAtUtc >= endAtUtc) return null
+    const startAtUtc = fromDateTimeLocal(form.timedStart, timeZone)
+    const endAtUtc = fromDateTimeLocal(form.timedEnd, timeZone)
     return {
       kind: 'timed-schedule',
       title: form.title,
@@ -70,17 +68,16 @@ function toPayload(form: CaptureForm): CaptureDraftPayload | null {
       endAtUtc
     }
   }
-  if (!form.allDayStart || !form.allDayEnd || form.allDayStart >= form.allDayEnd) return null
   return {
     kind: 'all-day-schedule',
     title: form.title,
     bodyMarkdown: form.bodyMarkdown,
-    startDate: form.allDayStart,
-    endDateExclusive: form.allDayEnd
+    startDate: form.allDayStart || null,
+    endDateExclusive: form.allDayEnd || null
   }
 }
 
-function formFromDraft(draft: Draft): CaptureForm {
+function formFromDraft(draft: Draft, timeZone: string): CaptureForm {
   const payload = draft.payload
   if (payload.kind === 'note') {
     return { ...EMPTY_FORM, kind: 'note', title: payload.title, bodyMarkdown: payload.bodyMarkdown }
@@ -101,8 +98,8 @@ function formFromDraft(draft: Draft): CaptureForm {
       kind: 'timed-schedule',
       title: payload.title,
       bodyMarkdown: payload.bodyMarkdown,
-      timedStart: toDateTimeLocal(payload.startAtUtc),
-      timedEnd: toDateTimeLocal(payload.endAtUtc)
+      timedStart: payload.startAtUtc ? toDateTimeLocal(payload.startAtUtc, timeZone) : '',
+      timedEnd: payload.endAtUtc ? toDateTimeLocal(payload.endAtUtc, timeZone) : ''
     }
   }
   return {
@@ -110,8 +107,8 @@ function formFromDraft(draft: Draft): CaptureForm {
     kind: 'all-day-schedule',
     title: payload.title,
     bodyMarkdown: payload.bodyMarkdown,
-    allDayStart: payload.startDate,
-    allDayEnd: payload.endDateExclusive
+    allDayStart: payload.startDate ?? '',
+    allDayEnd: payload.endDateExclusive ?? ''
   }
 }
 
@@ -142,7 +139,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   const applyDraft = useCallback((draft: Draft | null): void => {
     if (draft) {
       revisionRef.current = draft.revision
-      setForm(formFromDraft(draft))
+      setForm(formFromDraft(draft, bootstrap.appTimeZone))
       setSaveState('saved')
     } else {
       revisionRef.current = 0
@@ -152,7 +149,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
     dirtyRef.current = false
     setSaveError(undefined)
     setInitialized(true)
-  }, [])
+  }, [bootstrap.appTimeZone])
 
   const readDraft = useCallback(async (): Promise<void> => {
     try {
@@ -181,11 +178,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   }, [applyDraft])
 
   const persistSnapshot = useCallback((snapshot: CaptureForm, version: number): Promise<boolean> => {
-    const payload = toPayload(snapshot)
-    if (!payload) {
-      setSaveState('incomplete')
-      return Promise.resolve(false)
-    }
+    const payload = toPayload(snapshot, bootstrap.appTimeZone)
 
     const queued = saveQueueRef.current.catch(() => false).then(async () => {
       if (!activeRef.current) return false
@@ -226,7 +219,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
     })
     saveQueueRef.current = queued
     return queued
-  }, [])
+  }, [bootstrap.appTimeZone])
 
   useEffect(() => {
     activeRef.current = true
@@ -268,8 +261,17 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   const saveNow = (): Promise<boolean> => persistSnapshot(formRef.current, versionRef.current)
 
   const createEntity = async (): Promise<void> => {
-    const payload = toPayload(formRef.current)
-    if (!payload) {
+    const payload = toPayload(formRef.current, bootstrap.appTimeZone)
+    const invalidEntity =
+      (payload.kind !== 'note' && !payload.title.trim()) ||
+      (payload.kind === 'timed-schedule' && (
+        payload.startAtUtc === null || payload.endAtUtc === null || payload.startAtUtc >= payload.endAtUtc
+      )) ||
+      (payload.kind === 'all-day-schedule' && (
+        payload.startDate === null || payload.endDateExclusive === null ||
+        payload.startDate >= payload.endDateExclusive
+      ))
+    if (invalidEntity) {
       setSubmitState('failed')
       setSubmitError(copy.invalidForm)
       return
@@ -309,8 +311,8 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
                 id,
                 title: payload.title,
                 bodyMarkdown: payload.bodyMarkdown,
-                startAtUtc: payload.startAtUtc,
-                endAtUtc: payload.endAtUtc
+                startAtUtc: payload.startAtUtc!,
+                endAtUtc: payload.endAtUtc!
               }
             })
             : await window.quietDesk.schedules.create({
@@ -320,8 +322,8 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
                 id,
                 title: payload.title,
                 bodyMarkdown: payload.bodyMarkdown,
-                startDate: payload.startDate,
-                endDateExclusive: payload.endDateExclusive
+                startDate: payload.startDate!,
+                endDateExclusive: payload.endDateExclusive!
               }
             })
 

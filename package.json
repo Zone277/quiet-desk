@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
     "test:integration": "npm run build && node tests/integration/electron-storage-smoke.mjs",
-    "test:e2e": "npm run build && node tests/e2e/windows-shells.mjs",
+    "test:e2e": "npm run build && node tests/e2e/windows-shells.mjs && node tests/e2e/stage3-business.mjs",
+    "test:visual": "npm run build && node tests/e2e/stage3-visual.mjs",
     "test:platform": "npm run build && vitest run tests/platform",
     "build": "electron-vite build",
     "dist:win": "npm run build && electron-builder --win portable --x64"

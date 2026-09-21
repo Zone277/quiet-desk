@@ -18,7 +18,7 @@ export const apiAllowlist = Object.freeze({
   settings: ['updateAppearance'],
   tasks: ['create', 'reschedule', 'setCompletion', 'update'],
   widget: ['getSnapshot'],
-  windows: ['hide', 'show']
+  windows: ['hide', 'show', 'subscribeContext']
 })
 
 export const requiredCapabilities = Object.freeze(
@@ -298,7 +298,12 @@ export async function setWidgetContentSize(app, width, height) {
       bounds: widget.getBounds()
     }
   }, { width, height })
-  assert.deepEqual(result.contentSize, [width, height], `Widget content size did not reach ${width}x${height}`)
+  const [actualWidth, actualHeight] = result.contentSize
+  assert.ok(
+    actualWidth >= width && actualWidth <= width + 1 &&
+    actualHeight >= height && actualHeight <= height + 1,
+    `Widget content size ${actualWidth}x${actualHeight} differs by more than the one-DIP Windows rounding allowance from ${width}x${height}`
+  )
   return result
 }
 
@@ -334,7 +339,10 @@ export async function assertCoreEntriesInViewport(page) {
     assert.notEqual(rect.display, 'none', `${name} is display:none`)
     assert.notEqual(rect.visibility, 'hidden', `${name} is visibility:hidden`)
     assert.ok(rect.right > 0 && rect.left < result.viewport.width, `${name} is outside the horizontal viewport`)
-    assert.ok(rect.bottom > 0 && rect.top < result.viewport.height, `${name} is outside the vertical viewport`)
+    assert.ok(
+      rect.bottom > 0 && rect.top < result.viewport.height,
+      `${name} is outside the vertical viewport: ${JSON.stringify({ viewport: result.viewport, rect })}`
+    )
   }
   return result
 }

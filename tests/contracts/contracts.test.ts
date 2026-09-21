@@ -63,6 +63,13 @@ describe('v2 shared contract', () => {
         payload: { kind: 'task', title: 'mismatch', bodyMarkdown: '', planDate: null, dueDate: null }
       }
     }).success).toBe(false)
+    expect(captureDraftPayloadSchema.safeParse({
+      kind: 'timed-schedule',
+      title: '',
+      bodyMarkdown: '未完成的日程草稿',
+      startAtUtc: null,
+      endAtUtc: null
+    }).success).toBe(true)
     expect(permanentlyDeleteEntityRequestSchema.safeParse({
       requestId: id,
       idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',

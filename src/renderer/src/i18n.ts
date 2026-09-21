@@ -144,7 +144,7 @@ const ZH: Copy = {
   created: '已保存到本地数据库',
   language: '语言',
   theme: '主题',
-  system: '跟随系统',
+  system: '自动',
   light: '浅色',
   dark: '深色',
   appearanceError: '外观设置保存失败',
@@ -168,7 +168,7 @@ const ZH: Copy = {
   operationFailed: '操作失败',
   invalidForm: '请检查必填字段和日期范围',
   noteNeedsContent: '请输入标题或正文',
-  scheduleTimeZoneHint: (timeZone) => `时间按当前系统本地时间输入；应用时区：${timeZone}`,
+  scheduleTimeZoneHint: (timeZone) => `时间按应用时区 ${timeZone} 输入`,
   revision: (revision) => `版本 ${revision}`
 }
 
@@ -230,7 +230,7 @@ const EN: Copy = {
   created: 'Saved to the local database',
   language: 'Language',
   theme: 'Theme',
-  system: 'System',
+  system: 'Auto',
   light: 'Light',
   dark: 'Dark',
   appearanceError: 'Could not save appearance settings',
@@ -254,7 +254,7 @@ const EN: Copy = {
   operationFailed: 'Operation failed',
   invalidForm: 'Check the required fields and date range',
   noteNeedsContent: 'Enter a title or some content',
-  scheduleTimeZoneHint: (timeZone) => `Times use the current system local time; application time zone: ${timeZone}`,
+  scheduleTimeZoneHint: (timeZone) => `Times use the application time zone: ${timeZone}`,
   revision: (revision) => `Revision ${revision}`
 }
 

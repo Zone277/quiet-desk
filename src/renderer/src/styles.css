@@ -533,7 +533,10 @@ button:active:not(:disabled) {
 /* Widget */
 .widget-layout {
   display: grid;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--space-3);
 }
 
@@ -573,6 +576,10 @@ button:active:not(:disabled) {
   white-space: nowrap;
 }
 
+.button-icon {
+  margin-right: 4px;
+}
+
 .capture-button {
   margin-left: auto;
 }
@@ -580,8 +587,18 @@ button:active:not(:disabled) {
 .widget-sections {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(auto-fit, minmax(min(255px, 100%), 1fr));
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.widget-sections .section-card {
+  min-height: 0;
+}
+
+.widget-sections .item-list {
+  overflow: hidden;
 }
 
 .completion-toggle {
@@ -625,7 +642,7 @@ button:active:not(:disabled) {
 }
 
 .completed-section {
-  align-self: start;
+  align-self: stretch;
 }
 
 .completed-section summary {
@@ -957,11 +974,7 @@ button:active:not(:disabled) {
   }
 
   .host-badge {
-    width: 25px;
-    min-height: 25px;
-    padding: 0;
-    justify-content: center;
-    color: transparent;
+    display: none;
   }
 
   .compact-control > span {
@@ -973,7 +986,7 @@ button:active:not(:disabled) {
   }
 
   .compact-control select {
-    max-width: 82px;
+    max-width: 90px;
     height: 27px;
   }
 
@@ -1044,8 +1057,8 @@ button:active:not(:disabled) {
   }
 
   .compact-control select {
-    width: 70px;
-    max-width: 70px;
+    width: 82px;
+    max-width: 82px;
     padding-left: 5px;
     font-size: 10px;
   }
@@ -1073,6 +1086,7 @@ button:active:not(:disabled) {
   }
 
   .compact-button .button-icon {
+    margin-right: 0;
     font-size: 17px;
   }
 
@@ -1129,9 +1143,66 @@ button:active:not(:disabled) {
     padding-bottom: 4px;
   }
 
+  .widget-layout {
+    height: 100%;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .widget-sections {
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .widget-sections .section-card {
+    min-height: 0;
+    padding: 6px;
+  }
+
+  .widget-sections .item-list {
+    max-height: 27px;
+    margin-top: 2px;
+    overflow: hidden;
+  }
+
+  .widget-sections .item-row {
+    gap: 4px;
+    padding: 3px 2px;
+  }
+
+  .widget-sections .item-meta,
+  .widget-sections .item-preview,
+  .widget-sections .item-row time,
+  .widget-sections .more-count {
+    display: none;
+  }
+
+  .widget-sections .empty-state {
+    padding: 4px 0 0;
+    line-height: 1.2;
+  }
+
+  .widget-sections .completion-toggle {
+    width: 18px;
+    min-width: 18px;
+    min-height: 18px;
+  }
+
+  .widget-sections .schedule-marker {
+    height: 18px;
+  }
+
   .section-card {
     padding-top: 8px;
     padding-bottom: 8px;
+  }
+}
+
+@container app-shell (max-height: 500px) {
+  .widget-sections .item-list li:nth-child(n + 2) {
+    display: none;
   }
 }
 

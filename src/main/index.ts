@@ -6,6 +6,7 @@ import { createShellWindow } from './app-shell-windows'
 import { registerDesktopSpikeIpc } from './ipc/desktop-spike-ipc'
 import { registerQuietDeskIpc } from './ipc/quietdesk-ipc'
 import type { QuietDeskWindows } from './ipc/window-registry'
+import { CoreDataService } from './services/core-data-service'
 import { NoteStorageService } from './services/note-storage-service'
 import { createDesktopSpikeWindow, type DesktopSpikeController } from './windows/desktop-spike-window'
 
@@ -15,7 +16,7 @@ const STORAGE_SMOKE_REQUEST_ID = '20000000-0000-4000-8000-000000000003'
 const STORAGE_SMOKE_INSTANT = '2026-09-21T08:00:00.000Z'
 
 let controller: DesktopSpikeController | undefined
-let storage: NoteStorageService | undefined
+let storage: CoreDataService | undefined
 let unregisterQuietDeskIpc: (() => void) | undefined
 
 function configureUserDataPath(): void {
@@ -42,6 +43,13 @@ function detectLocale(): 'zh-CN' | 'en-US' {
 
 function systemTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+}
+
+function applicationClock(): Clock {
+  const fixedInstant = process.env.QUIETDESK_TEST_USER_DATA
+    ? process.env.QUIETDESK_TEST_NOW
+    : undefined
+  return fixedInstant ? new FixedClock(fixedInstant) : new SystemClock()
 }
 
 function smokeRequest(): CreateNoteRequest {
@@ -104,8 +112,8 @@ app.whenReady().then(async () => {
     return
   }
 
-  const clock = new SystemClock()
-  storage = new NoteStorageService({ databasePath, clock })
+  const clock = applicationClock()
+  storage = new CoreDataService({ databasePath, clock })
   const appTimeZone = storage.getOrCreateAppTimeZone(systemTimeZone())
   const preloadPath = resolve(__dirname, '../preload/index.js')
   const rendererDirectory = resolve(__dirname, '../renderer')
@@ -132,8 +140,11 @@ app.whenReady().then(async () => {
     windows: windowsPromise,
     clock,
     appTimeZone,
-    locale: detectLocale(),
-    resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+    defaultLocale: detectLocale(),
+    applyTheme: (theme) => {
+      nativeTheme.themeSource = theme
+    },
+    resolvedTheme: () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
   })
 
   try {

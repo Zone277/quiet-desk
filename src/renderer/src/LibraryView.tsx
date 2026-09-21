@@ -149,6 +149,14 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
     }
   }, [loadDay, loadTrash, mode])
 
+  useEffect(() => window.quietDesk.windows.subscribeContext((context) => {
+    if (context.target !== 'library') return
+    setMode('day')
+    setSelected(undefined)
+    setHistory([])
+    setSelectedDate(context.selectedDate)
+  }), [])
+
   const changeMode = (next: 'day' | 'trash'): void => {
     setMode(next)
     setSelected(undefined)

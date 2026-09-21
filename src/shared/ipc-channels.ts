@@ -24,5 +24,6 @@ export const QUIETDESK_CHANNELS = {
   updateAppearance: 'quietdesk:v2:settings:appearance',
   showWindow: 'quietdesk:v2:windows:show',
   hideWindow: 'quietdesk:v2:windows:hide',
+  windowContext: 'quietdesk:v2:windows:context',
   changed: 'quietdesk:v2:changed'
 } as const

@@ -60,14 +60,45 @@ export function nextDate(value: DateOnly, offset: number): DateOnly {
   return date.toISOString().slice(0, 10)
 }
 
-export function toDateTimeLocal(utc: string): string {
-  const date = new Date(utc)
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
-  return shifted.toISOString().slice(0, 16)
+function zonedDateTimeParts(instant: Date, timeZone: string): Record<string, string> {
+  return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(instant).map((part) => [part.type, part.value]))
 }
 
-export function fromDateTimeLocal(value: string): string | null {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null
+export function toDateTimeLocal(utc: string, timeZone: string): string {
+  const parts = zonedDateTimeParts(new Date(utc), timeZone)
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+}
+
+export function fromDateTimeLocal(value: string, timeZone: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u.exec(value)
+  if (!match) return null
+  const [year, month, day, hour, minute] = match.slice(1).map(Number)
+  const targetWallTime = Date.UTC(year!, month! - 1, day!, hour!, minute!, 0, 0)
+  let candidate = targetWallTime
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = zonedDateTimeParts(new Date(candidate), timeZone)
+    const representedWallTime = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second), 0
+    )
+    const delta = targetWallTime - representedWallTime
+    candidate += delta
+    if (delta === 0) break
+  }
+  const verified = zonedDateTimeParts(new Date(candidate), timeZone)
+  if (
+    Number(verified.year) !== year || Number(verified.month) !== month ||
+    Number(verified.day) !== day || Number(verified.hour) !== hour ||
+    Number(verified.minute) !== minute
+  ) return null
+  return new Date(candidate).toISOString()
 }

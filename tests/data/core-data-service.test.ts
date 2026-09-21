@@ -375,6 +375,20 @@ describe('CoreDataService stage 3', () => {
     }))).toThrow(StorageConflictError)
     expect(service.getDraft(first.id)?.payload).toMatchObject({ bodyMarkdown: '草稿二' })
     expect(service.getHistory({ type: 'note', id: first.id })).toEqual([])
+
+    const partialSchedule = service.saveDraft(envelope({
+      id: randomUUID(),
+      expectedRevision: 0,
+      captureKind: 'schedule' as const,
+      payload: {
+        kind: 'timed-schedule' as const,
+        title: '',
+        bodyMarkdown: '尚未选择时间',
+        startAtUtc: null,
+        endAtUtc: null
+      }
+    })).value
+    expect(service.getDraft(partialSchedule.id)).toEqual(partialSchedule)
   })
 
   test('S3-D10 keeps idempotency and rollback boundaries exact', async () => {

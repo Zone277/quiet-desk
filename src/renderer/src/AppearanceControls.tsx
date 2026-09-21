@@ -45,7 +45,7 @@ export function AppearanceControls({ bootstrap, copy, onUpdated }: AppearanceCon
           onChange={(event) => void update({ locale: event.target.value as Locale })}
         >
           <option value="zh-CN">中文</option>
-          <option value="en-US">English</option>
+          <option value="en-US">EN</option>
         </select>
       </label>
       <label className="select-control compact-control">
