@@ -6,7 +6,6 @@ import {
   draftSchema,
   entityIdSchema,
   entityRecordSchema,
-  entityRevisionSchema,
   entityTypeSchema,
   ianaTimeZoneSchema,
   markdownSchema,
@@ -35,6 +34,7 @@ export const themeSchema = z.enum(['system', 'light', 'dark'])
 export const resolvedThemeSchema = z.enum(['light', 'dark'])
 export const requestIdSchema = z.string().uuid()
 export const idempotencyKeySchema = z.string().uuid()
+const expectedRevisionSchema = z.number().int().positive()
 export const entityReferenceSchema = z.object({
   type: entityTypeSchema,
   id: entityIdSchema
@@ -133,7 +133,7 @@ export const createTaskRequestSchema = mutationEnvelope(z.object({
 
 export const updateTaskRequestSchema = mutationEnvelope(z.object({
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   title: titleSchema,
   bodyMarkdown: markdownSchema,
   planDate: dateOnlySchema.nullable(),
@@ -142,13 +142,13 @@ export const updateTaskRequestSchema = mutationEnvelope(z.object({
 
 export const setTaskCompletionRequestSchema = mutationEnvelope(z.object({
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   action: z.enum(['complete', 'reopen'])
 }).strict())
 
 export const rescheduleTaskRequestSchema = mutationEnvelope(z.object({
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   planDate: dateOnlySchema.nullable(),
   dueDate: dateOnlySchema.nullable()
 }).strict())
@@ -163,7 +163,7 @@ export const getNoteRequestSchema = requestEnvelope(z.object({ id: entityIdSchem
 
 export const updateNoteRequestSchema = mutationEnvelope(z.object({
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   title: z.string().max(500),
   bodyMarkdown: markdownSchema
 }).strict())
@@ -199,7 +199,7 @@ export const createScheduleRequestSchema = mutationEnvelope(
 const timedScheduleUpdatePayloadSchema = z.object({
   kind: z.literal('timed'),
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   title: titleSchema,
   bodyMarkdown: markdownSchema,
   startAtUtc: utcInstantSchema,
@@ -212,7 +212,7 @@ const timedScheduleUpdatePayloadSchema = z.object({
 const allDayScheduleUpdatePayloadSchema = z.object({
   kind: z.literal('all-day'),
   id: entityIdSchema,
-  expectedRevision: entityRevisionSchema,
+  expectedRevision: expectedRevisionSchema,
   title: titleSchema,
   bodyMarkdown: markdownSchema,
   startDate: dateOnlySchema,
@@ -245,13 +245,13 @@ export const saveDraftRequestSchema = mutationEnvelope(
 
 export const entityMutationRequestSchema = mutationEnvelope(z.object({
   entity: entityReferenceSchema,
-  expectedRevision: entityRevisionSchema
+  expectedRevision: expectedRevisionSchema
 }).strict())
 
 export const permanentlyDeleteEntityRequestSchema = mutationEnvelope(
   z.object({
     entity: entityReferenceSchema,
-    expectedRevision: entityRevisionSchema,
+    expectedRevision: expectedRevisionSchema,
     confirmedEntityId: entityIdSchema
   }).strict().refine(
     (value) => value.confirmedEntityId === value.entity.id,

@@ -12,7 +12,8 @@ import {
   bootstrapRequestSchema,
   createNoteRequestSchema,
   permanentlyDeleteEntityRequestSchema,
-  saveDraftRequestSchema
+  saveDraftRequestSchema,
+  updateTaskRequestSchema
 } from '../../src/shared/ipc-contract'
 
 const id = '01234567-89ab-4def-8abc-0123456789ab'
@@ -104,6 +105,29 @@ describe('v2 shared contract', () => {
       requestId: id,
       payload: { id, title: '', bodyMarkdown: 'missing key' }
     }).success).toBe(false)
+  })
+
+  test('requires an explicit positive revision for entity updates', () => {
+    const base = {
+      requestId: id,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: {
+        id,
+        title: 'explicit revision',
+        bodyMarkdown: '',
+        planDate: null,
+        dueDate: null
+      }
+    }
+    expect(updateTaskRequestSchema.safeParse(base).success).toBe(false)
+    expect(updateTaskRequestSchema.safeParse({
+      ...base,
+      payload: { ...base.payload, expectedRevision: 0 }
+    }).success).toBe(false)
+    expect(updateTaskRequestSchema.safeParse({
+      ...base,
+      payload: { ...base.payload, expectedRevision: 1 }
+    }).success).toBe(true)
   })
 
   test('uses an injectable clock without changing the system clock', () => {
