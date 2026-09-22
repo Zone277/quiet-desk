@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { z } from 'zod'
 import {
   EntityNotFoundError,
   IdempotencyConflictError,
@@ -46,7 +47,11 @@ import {
   rescheduleTaskRequestSchema,
   saveDraftRequestSchema,
   setTaskCompletionRequestSchema,
+  shortcutAcceleratorSchema,
+  submitDraftReceiptSchema,
+  submitDraftRequestSchema,
   updateAppearanceRequestSchema,
+  updateShortcutRequestSchema,
   updateNoteRequestSchema,
   updateScheduleRequestSchema,
   updateTaskRequestSchema,
@@ -62,9 +67,12 @@ import {
   type RescheduleTaskRequest,
   type SaveDraftRequest,
   type SetTaskCompletionRequest,
+  type SubmitDraftReceipt,
+  type SubmitDraftRequest,
   type UpdateAppearanceRequest,
   type UpdateNoteRequest,
   type UpdateScheduleRequest,
+  type UpdateShortcutRequest,
   type UpdateTaskRequest,
   type WidgetSnapshot
 } from '../../shared/ipc-contract'
@@ -74,6 +82,10 @@ const WIDGET_TASK_LIMIT = 6
 const WIDGET_SCHEDULE_LIMIT = 5
 const WIDGET_NOTE_LIMIT = 3
 const WIDGET_COMPLETED_LIMIT = 5
+const CAPTURE_SHORTCUT_SETTING_KEY = 'capture.shortcut'
+const captureShortcutSettingSchema = z.object({
+  accelerator: shortcutAcceleratorSchema
+}).strict()
 
 type EntityReference = { type: EntityType; id: string }
 type ChangeTopic = ChangeEvent['topics'][number]
@@ -717,6 +729,68 @@ export class CoreDataService {
     })
   }
 
+  submitDraft(request: SubmitDraftRequest): MutationResult<SubmitDraftReceipt> {
+    const validated = submitDraftRequestSchema.parse(request)
+    const operation = 'drafts.submit.v3'
+    const commandFingerprint = fingerprint(operation, validated.payload)
+    const timeZone = this.currentTimeZone()
+
+    return this.database.transaction(() => {
+      const replay = this.readReceipt(
+        validated.idempotencyKey,
+        operation,
+        commandFingerprint,
+        (value) => submitDraftReceiptSchema.parse(value)
+      )
+      if (replay) return replay
+
+      const draft = this.getDraft(validated.payload.draftId)
+      if (!draft) {
+        throw new EntityNotFoundError('draft', validated.payload.draftId)
+      }
+      this.assertRevision(draft.revision, validated.payload.expectedRevision)
+
+      const occurredAtUtc = nowUtc(this.clock)
+      const entity = this.createEntityFromDraft(draft, validated.payload.entityId, occurredAtUtc)
+      const entityReference = { type: entity.type, id: entity.value.id }
+      const change = this.insertChange(
+        occurredAtUtc,
+        [this.topicForEntity(entity.type), 'drafts'],
+        [entityReference, { type: 'draft', id: draft.id }]
+      )
+      this.recordHistory(
+        entity,
+        this.createdOperationForEntity(entity.type),
+        change,
+        occurredAtUtc,
+        timeZone
+      )
+
+      const deleted = this.database.connection.prepare(`
+        DELETE FROM drafts WHERE id = ? AND revision = ?
+      `).run(draft.id, draft.revision)
+      if (deleted.changes !== 1) {
+        throw new StorageConflictError('draft-revision', 'Draft revision changed before submission')
+      }
+
+      const receipt = submitDraftReceiptSchema.parse({
+        entity,
+        submittedDraftRevision: draft.revision
+      })
+      this.writeReceipt({
+        idempotencyKey: validated.idempotencyKey,
+        operation,
+        commandFingerprint,
+        subjectType: entity.type,
+        subjectId: entity.value.id,
+        value: receipt,
+        change,
+        occurredAtUtc
+      })
+      return { value: receipt, change, replayed: false }
+    })
+  }
+
   trashEntity(request: EntityMutationRequest): MutationResult<EntityRecord> {
     return this.setDeletedState(request, true)
   }
@@ -823,6 +897,42 @@ export class CoreDataService {
         locale: locale ?? validatedLocale,
         theme: theme ?? 'system'
       })
+    })
+  }
+
+  getOrCreateCaptureShortcut(defaultAccelerator: string): string {
+    const validatedDefault = shortcutAcceleratorSchema.parse(defaultAccelerator)
+    return this.database.transaction(() => {
+      const existing = this.readSetting(CAPTURE_SHORTCUT_SETTING_KEY)
+      if (existing !== undefined) return shortcutAcceleratorSchema.parse(existing)
+      this.writeSetting(CAPTURE_SHORTCUT_SETTING_KEY, validatedDefault, nowUtc(this.clock))
+      return validatedDefault
+    })
+  }
+
+  updateCaptureShortcut(
+    request: UpdateShortcutRequest
+  ): MutationResult<{ accelerator: string }> {
+    const validated = updateShortcutRequestSchema.parse(request)
+    return this.mutate({
+      operation: 'settings.update-capture-shortcut.v3',
+      idempotencyKey: validated.idempotencyKey,
+      payload: validated.payload,
+      subjectType: 'settings',
+      subjectId: null,
+      topics: ['settings'],
+      entityRefs: [],
+      parseValue: (value) => captureShortcutSettingSchema.parse(value),
+      perform: (occurredAtUtc) => {
+        this.writeSetting(
+          CAPTURE_SHORTCUT_SETTING_KEY,
+          validated.payload.accelerator,
+          occurredAtUtc
+        )
+        return captureShortcutSettingSchema.parse({
+          accelerator: validated.payload.accelerator
+        })
+      }
     })
   }
 
@@ -1156,6 +1266,124 @@ export class CoreDataService {
         `Expected revision ${expected}, received ${actual}`
       )
     }
+  }
+
+  private createEntityFromDraft(
+    draft: Draft,
+    entityId: string,
+    occurredAtUtc: string
+  ): EntityRecord {
+    const common = {
+      id: entityId,
+      revision: 1,
+      createdAtUtc: occurredAtUtc,
+      updatedAtUtc: occurredAtUtc,
+      deletedAtUtc: null
+    }
+
+    if (draft.captureKind === 'note' && draft.payload.kind === 'note') {
+      if (!draft.payload.title.trim() && !draft.payload.bodyMarkdown.trim()) {
+        throw new StorageConflictError(
+          'empty-note',
+          'A note draft must contain a title or body before submission'
+        )
+      }
+      const note = noteSchema.parse({
+        ...common,
+        title: draft.payload.title,
+        bodyMarkdown: draft.payload.bodyMarkdown
+      })
+      this.database.connection.prepare(`
+        INSERT INTO notes (
+          id, title, body_markdown, revision, created_at_utc, updated_at_utc, deleted_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        note.id, note.title, note.bodyMarkdown, note.revision,
+        note.createdAtUtc, note.updatedAtUtc, note.deletedAtUtc
+      )
+      return entityRecordSchema.parse({ type: 'note', value: note })
+    }
+
+    if (draft.captureKind === 'task' && draft.payload.kind === 'task') {
+      if (!draft.payload.title.trim()) {
+        throw new StorageConflictError(
+          'incomplete-task',
+          'A task draft requires a non-empty title before submission'
+        )
+      }
+      const task = taskSchema.parse({
+        ...common,
+        title: draft.payload.title,
+        bodyMarkdown: draft.payload.bodyMarkdown,
+        planDate: draft.payload.planDate,
+        dueDate: draft.payload.dueDate,
+        completedAtUtc: null
+      })
+      this.database.connection.prepare(`
+        INSERT INTO tasks (
+          id, title, body_markdown, plan_date, due_date, completed_at_utc,
+          revision, created_at_utc, updated_at_utc, deleted_at_utc
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        task.id, task.title, task.bodyMarkdown, task.planDate, task.dueDate,
+        task.completedAtUtc, task.revision, task.createdAtUtc, task.updatedAtUtc,
+        task.deletedAtUtc
+      )
+      return entityRecordSchema.parse({ type: 'task', value: task })
+    }
+
+    if (draft.captureKind === 'schedule' && draft.payload.kind === 'timed-schedule') {
+      if (!draft.payload.title.trim() ||
+          draft.payload.startAtUtc === null || draft.payload.endAtUtc === null) {
+        throw new StorageConflictError(
+          'incomplete-schedule',
+          'A timed schedule draft requires a title, start time, and end time before submission'
+        )
+      }
+      const schedule = scheduleSchema.parse({
+        ...common,
+        kind: 'timed',
+        title: draft.payload.title,
+        bodyMarkdown: draft.payload.bodyMarkdown,
+        startAtUtc: draft.payload.startAtUtc,
+        endAtUtc: draft.payload.endAtUtc
+      })
+      this.insertSchedule(schedule)
+      return entityRecordSchema.parse({ type: 'schedule', value: schedule })
+    }
+
+    if (draft.captureKind === 'schedule' && draft.payload.kind === 'all-day-schedule') {
+      if (!draft.payload.title.trim() ||
+          draft.payload.startDate === null || draft.payload.endDateExclusive === null) {
+        throw new StorageConflictError(
+          'incomplete-schedule',
+          'An all-day schedule draft requires a title, start date, and end date before submission'
+        )
+      }
+      const schedule = scheduleSchema.parse({
+        ...common,
+        kind: 'all-day',
+        title: draft.payload.title,
+        bodyMarkdown: draft.payload.bodyMarkdown,
+        startDate: draft.payload.startDate,
+        endDateExclusive: draft.payload.endDateExclusive
+      })
+      this.insertSchedule(schedule)
+      return entityRecordSchema.parse({ type: 'schedule', value: schedule })
+    }
+
+    throw new StorageConflictError(
+      'draft-kind-mismatch',
+      'Draft capture kind does not match its persisted payload'
+    )
+  }
+
+  private createdOperationForEntity(type: EntityType): OperationKind {
+    return type === 'task'
+      ? 'task.created'
+      : type === 'note'
+        ? 'note.created'
+        : 'schedule.created'
   }
 
   private insertSchedule(schedule: Schedule): void {
