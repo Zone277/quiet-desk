@@ -38,7 +38,8 @@ const quietDeskApi: QuietDeskApi = {
   },
   drafts: {
     get: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.getDraft, request),
-    save: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.saveDraft, request)
+    save: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.saveDraft, request),
+    submit: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.submitDraft, request)
   },
   entities: {
     trash: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.trashEntity, request),
@@ -47,6 +48,13 @@ const quietDeskApi: QuietDeskApi = {
   },
   settings: {
     updateAppearance: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.updateAppearance, request)
+  },
+  shortcuts: {
+    get: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.getShortcut, request),
+    update: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.updateShortcut, request)
+  },
+  links: {
+    openExternal: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.openExternal, request)
   },
   windows: {
     show: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.showWindow, request),

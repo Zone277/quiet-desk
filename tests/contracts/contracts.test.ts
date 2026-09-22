@@ -11,15 +11,18 @@ import {
 import {
   bootstrapRequestSchema,
   createNoteRequestSchema,
+  externalUrlSchema,
   permanentlyDeleteEntityRequestSchema,
   saveDraftRequestSchema,
+  shortcutAcceleratorSchema,
+  submitDraftRequestSchema,
   updateTaskRequestSchema
 } from '../../src/shared/ipc-contract'
 
 const id = '01234567-89ab-4def-8abc-0123456789ab'
 const instant = '2026-09-21T08:15:30.000Z'
 
-describe('v2 shared contract', () => {
+describe('v3 shared contract', () => {
   test('keeps UTC instants and date-only values distinct', () => {
     expect(utcInstantSchema.safeParse(instant).success).toBe(true)
     expect(utcInstantSchema.safeParse('2026-09-21').success).toBe(false)
@@ -135,6 +138,30 @@ describe('v2 shared contract', () => {
       ...base,
       payload: { ...base.payload, expectedRevision: 1 }
     }).success).toBe(true)
+  })
+
+  test('freezes atomic draft submission and constrained shortcuts', () => {
+    expect(submitDraftRequestSchema.safeParse({
+      requestId: id,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: { draftId: id, expectedRevision: 2, entityId: '21234567-89ab-4def-8abc-0123456789ab' }
+    }).success).toBe(true)
+    expect(submitDraftRequestSchema.safeParse({
+      requestId: id,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: { draftId: id, expectedRevision: 0, entityId: '21234567-89ab-4def-8abc-0123456789ab' }
+    }).success).toBe(false)
+    expect(shortcutAcceleratorSchema.safeParse('Ctrl+Shift+Space').success).toBe(true)
+    expect(shortcutAcceleratorSchema.safeParse('Space').success).toBe(false)
+    expect(shortcutAcceleratorSchema.safeParse('Ctrl+Shift+UnknownKey').success).toBe(false)
+  })
+
+  test('allows only absolute HTTP and HTTPS external links', () => {
+    expect(externalUrlSchema.safeParse('https://example.com/path?q=quiet').success).toBe(true)
+    expect(externalUrlSchema.safeParse('http://127.0.0.1/docs').success).toBe(true)
+    expect(externalUrlSchema.safeParse('javascript:alert(1)').success).toBe(false)
+    expect(externalUrlSchema.safeParse('file:///C:/Windows/System32').success).toBe(false)
+    expect(externalUrlSchema.safeParse('data:text/html,hello').success).toBe(false)
   })
 
   test('uses an injectable clock without changing the system clock', () => {

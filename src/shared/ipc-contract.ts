@@ -35,6 +35,45 @@ export const resolvedThemeSchema = z.enum(['light', 'dark'])
 export const requestIdSchema = z.string().uuid()
 export const idempotencyKeySchema = z.string().uuid()
 const expectedRevisionSchema = z.number().int().positive()
+export const defaultCaptureShortcut = 'Ctrl+Shift+Space' as const
+
+const shortcutModifierPattern = /^(?:CommandOrControl|Control|Ctrl|Alt|Shift|Super|Meta)$/iu
+const shortcutKeyPattern = /^(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Space|Tab|Enter|Escape|Backspace|Delete|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/iu
+
+function isSupportedShortcut(value: string): boolean {
+  const parts = value.split('+').map((part) => part.trim()).filter(Boolean)
+  if (parts.length < 2 || parts.length > 5) return false
+  const key = parts.at(-1)
+  const modifiers = parts.slice(0, -1)
+  return key !== undefined && shortcutKeyPattern.test(key) &&
+    modifiers.every((modifier) => shortcutModifierPattern.test(modifier)) &&
+    new Set(modifiers.map((modifier) => modifier.toLowerCase())).size === modifiers.length
+}
+
+function isAllowedExternalUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return (url.protocol === 'https:' || url.protocol === 'http:') && Boolean(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export const shortcutAcceleratorSchema = z.string().trim().min(3).max(100).refine(
+  isSupportedShortcut,
+  'Expected a supported shortcut with at least one modifier and one key'
+)
+export const shortcutFailureSchema = z.enum(['conflict', 'invalid', 'unavailable'])
+export const captureShortcutStatusSchema = z.object({
+  accelerator: shortcutAcceleratorSchema,
+  defaultAccelerator: z.literal(defaultCaptureShortcut),
+  registered: z.boolean(),
+  failure: shortcutFailureSchema.nullable()
+}).strict()
+export const externalUrlSchema = z.string().trim().max(2048).refine(
+  isAllowedExternalUrl,
+  'Only absolute HTTP and HTTPS URLs are allowed'
+)
 export const entityReferenceSchema = z.object({
   type: entityTypeSchema,
   id: entityIdSchema
@@ -65,7 +104,8 @@ export const bootstrapSnapshotSchema = z.object({
   appTimeZone: ianaTimeZoneSchema,
   currentDate: dateOnlySchema,
   dataRevision: z.number().int().nonnegative(),
-  stage: z.literal(3),
+  stage: z.literal(4),
+  captureShortcut: captureShortcutStatusSchema,
   implementedCapabilities: z.array(z.string()),
   deferredCapabilities: z.array(z.string())
 }).strict()
@@ -243,6 +283,17 @@ export const saveDraftRequestSchema = mutationEnvelope(
   ), { message: 'Draft capture kind does not match its payload', path: ['payload'] })
 )
 
+export const submitDraftRequestSchema = mutationEnvelope(z.object({
+  draftId: entityIdSchema,
+  expectedRevision: expectedRevisionSchema,
+  entityId: entityIdSchema
+}).strict())
+
+export const submitDraftReceiptSchema = z.object({
+  entity: entityRecordSchema,
+  submittedDraftRevision: expectedRevisionSchema
+}).strict()
+
 export const entityMutationRequestSchema = mutationEnvelope(z.object({
   entity: entityReferenceSchema,
   expectedRevision: expectedRevisionSchema
@@ -269,6 +320,18 @@ export const updateAppearanceRequestSchema = mutationEnvelope(
   )
 )
 
+export const getShortcutRequestSchema = requestEnvelope(z.object({}).strict())
+export const updateShortcutRequestSchema = mutationEnvelope(z.object({
+  accelerator: shortcutAcceleratorSchema
+}).strict())
+export const openExternalRequestSchema = requestEnvelope(z.object({
+  url: externalUrlSchema
+}).strict())
+export const openExternalResultSchema = z.object({
+  opened: z.literal(true),
+  url: externalUrlSchema
+}).strict()
+
 export const showWindowRequestSchema = requestEnvelope(z.object({
   target: z.enum(['capture', 'library']),
   selectedDate: dateOnlySchema.optional()
@@ -278,10 +341,18 @@ export const hideWindowRequestSchema = requestEnvelope(
   z.object({ target: z.enum(['capture', 'library']) }).strict()
 )
 
-export const windowOpenContextSchema = z.object({
-  target: z.literal('library'),
-  selectedDate: dateOnlySchema
-}).strict()
+export const windowOpenContextSchema = z.discriminatedUnion('target', [
+  z.object({
+    target: z.literal('library'),
+    selectedDate: dateOnlySchema
+  }).strict(),
+  z.object({
+    target: z.literal('capture'),
+    source: z.enum(['widget', 'global-shortcut']),
+    activationId: entityIdSchema,
+    focusEditor: z.literal(true)
+  }).strict()
+])
 
 export const appearanceSettingsSchema = z.object({
   locale: localeSchema,
@@ -344,9 +415,15 @@ export type CreateScheduleRequest = z.infer<typeof createScheduleRequestSchema>
 export type UpdateScheduleRequest = z.infer<typeof updateScheduleRequestSchema>
 export type GetDraftRequest = z.infer<typeof getDraftRequestSchema>
 export type SaveDraftRequest = z.infer<typeof saveDraftRequestSchema>
+export type SubmitDraftRequest = z.infer<typeof submitDraftRequestSchema>
+export type SubmitDraftReceipt = z.infer<typeof submitDraftReceiptSchema>
 export type EntityMutationRequest = z.infer<typeof entityMutationRequestSchema>
 export type PermanentlyDeleteEntityRequest = z.infer<typeof permanentlyDeleteEntityRequestSchema>
 export type UpdateAppearanceRequest = z.infer<typeof updateAppearanceRequestSchema>
+export type GetShortcutRequest = z.infer<typeof getShortcutRequestSchema>
+export type UpdateShortcutRequest = z.infer<typeof updateShortcutRequestSchema>
+export type OpenExternalRequest = z.infer<typeof openExternalRequestSchema>
+export type OpenExternalResult = z.infer<typeof openExternalResultSchema>
 export type ShowWindowRequest = z.infer<typeof showWindowRequestSchema>
 export type HideWindowRequest = z.infer<typeof hideWindowRequestSchema>
 export type WindowOpenContext = z.infer<typeof windowOpenContextSchema>
@@ -359,6 +436,7 @@ export type BootstrapSnapshot = z.infer<typeof bootstrapSnapshotSchema>
 export type WidgetSnapshot = z.infer<typeof widgetSnapshotSchema>
 export type DayViewSnapshot = z.infer<typeof dayViewSnapshotSchema>
 export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>
+export type CaptureShortcutStatus = z.infer<typeof captureShortcutStatusSchema>
 export type ChangeEvent = z.infer<typeof changeEventSchema>
 
 export interface QuietDeskApi {
@@ -392,6 +470,7 @@ export interface QuietDeskApi {
   drafts: {
     get(request: GetDraftRequest): Promise<IpcResult<Draft | null>>
     save(request: SaveDraftRequest): Promise<IpcResult<Draft>>
+    submit(request: SubmitDraftRequest): Promise<IpcResult<SubmitDraftReceipt>>
   }
   entities: {
     trash(request: EntityMutationRequest): Promise<IpcResult<EntityRecord>>
@@ -400,6 +479,13 @@ export interface QuietDeskApi {
   }
   settings: {
     updateAppearance(request: UpdateAppearanceRequest): Promise<IpcResult<AppearanceSettings>>
+  }
+  shortcuts: {
+    get(request: GetShortcutRequest): Promise<IpcResult<CaptureShortcutStatus>>
+    update(request: UpdateShortcutRequest): Promise<IpcResult<CaptureShortcutStatus>>
+  }
+  links: {
+    openExternal(request: OpenExternalRequest): Promise<IpcResult<OpenExternalResult>>
   }
   windows: {
     show(request: ShowWindowRequest): Promise<IpcResult<{ shown: true }>>

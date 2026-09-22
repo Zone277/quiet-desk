@@ -249,7 +249,13 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
             appTimeZone: options.appTimeZone,
             currentDate: dateInTimeZone(options.clock, options.appTimeZone),
             dataRevision: options.service.getDataRevision(),
-            stage: 3,
+            stage: 4,
+            captureShortcut: {
+              accelerator: 'Ctrl+Shift+Space',
+              defaultAccelerator: 'Ctrl+Shift+Space',
+              registered: false,
+              failure: 'unavailable'
+            },
             implementedCapabilities: [...IMPLEMENTED_CAPABILITIES],
             deferredCapabilities: [...DEFERRED_CAPABILITIES]
           }

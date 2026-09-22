@@ -1,4 +1,4 @@
-export const IPC_CONTRACT_VERSION = 2 as const
+export const IPC_CONTRACT_VERSION = 3 as const
 
 export const QUIETDESK_CHANNELS = {
   bootstrap: 'quietdesk:v2:bootstrap',
@@ -18,10 +18,14 @@ export const QUIETDESK_CHANNELS = {
   updateSchedule: 'quietdesk:v2:schedules:update',
   getDraft: 'quietdesk:v2:drafts:get',
   saveDraft: 'quietdesk:v2:drafts:save',
+  submitDraft: 'quietdesk:v3:drafts:submit',
   trashEntity: 'quietdesk:v2:entities:trash',
   restoreEntity: 'quietdesk:v2:entities:restore',
   permanentlyDeleteEntity: 'quietdesk:v2:entities:permanent-delete',
   updateAppearance: 'quietdesk:v2:settings:appearance',
+  getShortcut: 'quietdesk:v3:shortcuts:get',
+  updateShortcut: 'quietdesk:v3:shortcuts:update',
+  openExternal: 'quietdesk:v3:links:open-external',
   showWindow: 'quietdesk:v2:windows:show',
   hideWindow: 'quietdesk:v2:windows:hide',
   windowContext: 'quietdesk:v2:windows:context',

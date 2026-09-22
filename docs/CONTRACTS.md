@@ -2,7 +2,7 @@
 
 > 冻结日期：2026-09-21；契约版本：1。本文固定进程边界、时间语义和阶段 2 的最小可执行接口。数据库实现细节可以迁移，但不得改变这里的可观察语义而不升级契约版本。
 
-> 阶段 3 扩展冻结日期：2026-09-21；当前 IPC 契约版本：2。下文第 10 节是兼容以上语义的增量冻结，版本 1 的时间、历史、删除和草稿事务规则继续有效。
+> 阶段 4 扩展冻结日期：2026-09-22；当前 IPC 契约版本：3。下文第 11 节在 v2 上增量冻结快捷捕获与 Markdown 安全边界，既有时间、历史、删除和草稿语义继续有效。
 
 ## 1. 所有权与边界
 
@@ -159,3 +159,34 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - 主进程提交成功后才广播 change event；幂等回放、冲突、校验失败和 SQLite 事务回滚不得再次广播。Renderer 收到较新 sequence 后重取主进程聚合快照，不自行合并业务真相。
 - `settings.updateAppearance` 成功后同时持久化 locale/theme，并由主进程更新 Electron `nativeTheme.themeSource`；`resolvedTheme` 继续来自 Electron。运行中真实 Windows 外观切换仍需独立验收。
 - 阶段 3 已实现 v2 表面和 schema v2，但不扩大范围到 Daily Log、Markdown 渲染、全局快捷键或自然语言解析。任何 v3 修改仍由 Lead 先更新本文、`src/shared`、preload 与契约测试。
+
+## 11. 阶段 4 IPC v3：快捷捕获与 Markdown
+
+### 11.1 草稿自动保存与原子提交
+
+- Capture 继续使用固定 draft ID 和服务端 `revision`。每次编辑增加 renderer 本地 `editSeq`；同一快照失败重试复用 idempotency key，内容再次变化后才生成新 key。
+- 去抖保存只能有一个写入在途；期间的新编辑合并为下一次最新快照。旧请求成功只推进服务端 revision，不得把较新的本地内容标成“已保存”。revision 冲突必须显示并保留可见输入。
+- `drafts.submit` 请求只含 `draftId`、`expectedRevision`、新实体 ID、请求 ID 和稳定幂等键。主进程从已落盘 draft 读取正式 payload，不接受 renderer 另带一份可漂移正文。
+- `drafts.submit` 在一个 SQLite 事务中校验 revision 与正式实体规则、创建 Task/Note/Schedule、写操作快照和 change event、写幂等回执并删除 draft。失败全部回滚；成功事件同时包含实体 topic 与 `drafts`。
+- 同键同请求重放原提交回执，不创建第二个实体；同键不同命令返回 `CONFLICT`。成功响应后 Capture 才清空本地表单并隐藏；失败时窗口、输入和可重试状态保持。
+
+### 11.2 Capture 输入与窗口生命周期
+
+- Enter 始终是正文换行。仅在非组合输入状态下，Ctrl+Enter 才执行“flush 最新草稿 → `drafts.submit`”；`compositionstart` 到 `compositionend` 期间及 `nativeEvent.isComposing=true` 时不得提交。
+- Esc 执行“保存最新草稿 → 成功后隐藏”，不删除草稿；保存失败保持窗口可见。失焦不提交、不隐藏、不清空。Capture 的系统关闭按钮也转换为隐藏；应用真正退出时才销毁。
+- 默认全局快捷键为 `Ctrl+Shift+Space`。允许的配置由 `shortcutAcceleratorSchema` 限制为至少一个修饰键和一个白名单按键，不接受任意 Electron/OS 命令字符串。
+- 快捷键重配先尝试注册候选；冲突/无效时保留当前已注册键和 Widget 捕获入口。候选注册成功后持久化，持久化失败则注销候选并保留旧键；提交成功后才注销旧键。退出时幂等注销。
+- `shortcuts.get/update` 返回 accelerator、默认值、registered 与 `conflict | invalid | unavailable | null`。冲突必须在 UI 可见；Widget 捕获按钮始终可用。`WindowOpenContext` 对 Capture 只携带来源、activation UUID 和聚焦编辑器标志，不携带正文。
+
+### 11.3 Markdown 与外链安全
+
+- 源码编辑和预览使用 `react-markdown` + `remark-gfm`，支持标题、列表、引用、代码块、链接、表格、删除线和文档内清单。不引入 `rehype-raw`；`skipHtml` 开启，原始 HTML 不进入 DOM。
+- Markdown 图片节点始终渲染为“远程图片已阻止”占位，不创建 `<img>`，因此预览不会默认请求远程资源。Widget 只使用主进程返回的纯文本摘要；Library 承担长文本、代码和表格阅读。
+- 链接点击必须阻止 renderer 默认导航并调用 `links.openExternal`。主进程再次解析并规范化 URL，只允许带 hostname 的绝对 `http:` / `https:`；拒绝 `javascript:`、`data:`、`file:`、相对地址和自定义协议。
+- `links.openExternal` 内部只能调用 Electron `shell.openExternal`；preload 不暴露 `shell`、任意 URL handler、文件路径或通用 invoke。
+
+### 11.4 v3 preload 增量表面与所有权
+
+- 新增 `drafts.submit`、`shortcuts.get/update`、`links.openExternal`；既有 v2 方法保持窄化。
+- Lead 独占 `src/shared/**`、`src/preload/**`、`src/main/ipc/**`、依赖和主入口；Data 实现提交事务与快捷键设置持久化；Desktop 实现全局快捷键和 Capture 生命周期；UI 实现输入状态机与 Markdown；QA 最后独立审查异常路径。
+- 阶段 4 不实现托盘、Daily Log、导出、附件、远程图片代理、自然语言解析或提醒。真实中文 IME 候选确认必须单列人工证据；模拟 composition 事件只能证明代码分支，不能替代该验收。
