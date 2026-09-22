@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BootstrapSnapshot, DayViewSnapshot } from '../../shared/ipc-contract'
 import type { EntityRecord, OperationSnapshot, TrashEntry } from '../../shared/model'
 import type { Copy } from './i18n'
+import { MarkdownView } from './MarkdownView'
+import { ShortcutSettings } from './ShortcutSettings'
 import {
   entityRevision,
   entityTitle,
@@ -65,6 +67,7 @@ function EntityBody({ record, bootstrap, copy }: {
   copy: Copy
 }): React.JSX.Element {
   const entity = record.value
+  const [view, setView] = useState<'preview' | 'source'>('preview')
   return (
     <div className="entity-detail-content">
       <div className="detail-heading">
@@ -82,7 +85,18 @@ function EntityBody({ record, bootstrap, copy }: {
       {record.type === 'schedule'
         ? <p className="detail-meta">{record.value.kind === 'all-day' ? copy.allDay : formatSchedule(record.value, bootstrap.locale, bootstrap.appTimeZone)}</p>
         : null}
-      <pre className="markdown-source">{entity.bodyMarkdown || '—'}</pre>
+      <div className="markdown-detail">
+        <div className="markdown-editor-heading">
+          <span className="eyebrow">Markdown</span>
+          <div className="view-toggle" role="group" aria-label={copy.markdownViewMode}>
+            <button type="button" className={view === 'preview' ? 'active' : undefined} aria-pressed={view === 'preview'} onClick={() => setView('preview')}>{copy.preview}</button>
+            <button type="button" className={view === 'source' ? 'active' : undefined} aria-pressed={view === 'source'} onClick={() => setView('source')}>{copy.source}</button>
+          </div>
+        </div>
+        {view === 'preview'
+          ? <MarkdownView markdown={entity.bodyMarkdown} copy={copy} className="library-markdown-preview" />
+          : <pre className="markdown-source" data-testid="markdown-source">{entity.bodyMarkdown || '—'}</pre>}
+      </div>
     </div>
   )
 }
@@ -286,6 +300,8 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
 
       {actionError ? <p className="inline-error" role="alert">{copy.operationFailed}: {actionError}</p> : null}
 
+      <ShortcutSettings bootstrap={bootstrap} copy={copy} />
+
       {mode === 'day' ? (
         <div className="library-columns">
           <section className="library-list-column">
@@ -357,7 +373,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
           <aside className="detail-column section-card" aria-label={copy.itemDetails}>
             {detailLoading ? <p>{copy.loading}</p> : selected ? (
               <>
-                <EntityBody record={selected} bootstrap={bootstrap} copy={copy} />
+                <EntityBody key={`${selected.type}:${selected.value.id}`} record={selected} bootstrap={bootstrap} copy={copy} />
                 <button
                   type="button"
                   className="danger-button"

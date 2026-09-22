@@ -54,8 +54,24 @@ export interface Copy {
   draftReady: string
   draftIncomplete: string
   draftConflict: string
-  captureStageNotice: string
+  captureHint: string
   created: string
+  source: string
+  preview: string
+  markdownViewMode: string
+  emptyPreview: string
+  remoteImageBlocked: string
+  openLinkFailed: string
+  captureShortcut: string
+  currentShortcut: string
+  shortcutCandidate: string
+  shortcutHint: string
+  saveShortcut: string
+  shortcutRegistered: string
+  shortcutNotRegistered: string
+  shortcutConflict: string
+  shortcutInvalid: string
+  shortcutUnavailable: string
   language: string
   theme: string
   system: string
@@ -140,8 +156,24 @@ const ZH: Copy = {
   draftReady: '草稿已恢复',
   draftIncomplete: '请补齐必填字段后保存草稿',
   draftConflict: '草稿已在其他窗口更新，请检查后重试',
-  captureStageNotice: '本阶段使用按钮创建；IME 与 Ctrl+Enter 完整行为留待阶段 4。',
+  captureHint: 'Enter 换行 · Ctrl+Enter 提交 · Esc 保存并收起',
   created: '已保存到本地数据库',
+  source: '源码',
+  preview: '预览',
+  markdownViewMode: 'Markdown 视图',
+  emptyPreview: '暂无可预览内容',
+  remoteImageBlocked: '远程图片已阻止',
+  openLinkFailed: '无法打开链接',
+  captureShortcut: '快捷捕获快捷键',
+  currentShortcut: '当前',
+  shortcutCandidate: '新快捷键',
+  shortcutHint: '至少包含一个修饰键，例如 Ctrl+Shift+Space',
+  saveShortcut: '应用快捷键',
+  shortcutRegistered: '已注册',
+  shortcutNotRegistered: '未注册',
+  shortcutConflict: '该快捷键已被占用；当前快捷键和 Widget 捕获入口保持可用。',
+  shortcutInvalid: '快捷键格式无效；请使用允许的修饰键和按键。',
+  shortcutUnavailable: '系统快捷键当前不可用；仍可从 Widget 打开快捷捕获。',
   language: '语言',
   theme: '主题',
   system: '自动',
@@ -226,8 +258,24 @@ const EN: Copy = {
   draftReady: 'Draft restored',
   draftIncomplete: 'Complete the required fields before saving this draft',
   draftConflict: 'This draft changed in another window. Review it and retry.',
-  captureStageNotice: 'This stage creates with the button. Complete IME and Ctrl+Enter behavior is reserved for stage 4.',
+  captureHint: 'Enter for a new line · Ctrl+Enter to submit · Esc to save and hide',
   created: 'Saved to the local database',
+  source: 'Source',
+  preview: 'Preview',
+  markdownViewMode: 'Markdown view',
+  emptyPreview: 'Nothing to preview yet',
+  remoteImageBlocked: 'Remote image blocked',
+  openLinkFailed: 'Could not open link',
+  captureShortcut: 'Quick Capture shortcut',
+  currentShortcut: 'Current',
+  shortcutCandidate: 'New shortcut',
+  shortcutHint: 'Include at least one modifier, for example Ctrl+Shift+Space',
+  saveShortcut: 'Apply shortcut',
+  shortcutRegistered: 'Registered',
+  shortcutNotRegistered: 'Not registered',
+  shortcutConflict: 'That shortcut is already in use. The current shortcut and Widget entry remain available.',
+  shortcutInvalid: 'The shortcut format is invalid. Use a supported modifier and key.',
+  shortcutUnavailable: 'The system shortcut is unavailable. Quick Capture is still available from the Widget.',
   language: 'Language',
   theme: 'Theme',
   system: 'Auto',
