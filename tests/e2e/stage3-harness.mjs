@@ -138,9 +138,10 @@ async function collectThreeWindows(app) {
   throw new Error(`Expected Widget, Capture and Library; observed ${app.windows().length} Electron pages`)
 }
 
-export async function launchQuietDesk({ userData, locale = 'zh-CN' }) {
+export async function launchQuietDesk({ userData, locale = 'zh-CN', extraEnv = {} }) {
   const environment = {
     ...process.env,
+    ...extraEnv,
     QUIETDESK_TEST_USER_DATA: userData,
     QUIETDESK_FORCE_FALLBACK: '1',
     QUIETDESK_SHOW_ALL_WINDOWS: '1'

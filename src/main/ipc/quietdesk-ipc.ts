@@ -123,6 +123,7 @@ interface QuietDeskIpcOptions {
   defaultLocale: 'zh-CN' | 'en-US'
   captureController: Promise<CaptureWindowController>
   shortcutManager: Promise<GlobalShortcutManager>
+  failCaptureSubmitOnce?(): boolean
   openExternal(url: string): Promise<void>
   applyTheme(theme: Theme): void
   resolvedTheme(): 'light' | 'dark'
@@ -330,6 +331,9 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
       const parsed = submitDraftRequestSchema.safeParse(raw)
       if (!parsed.success) return invalidRequest(requestId, 'submit draft', parsed.error.issues)
       try {
+        if (options.failCaptureSubmitOnce?.()) {
+          return failure(requestId, 'STORAGE_ERROR', 'Unable to submit draft', true)
+        }
         const result = options.service.submitDraft(parsed.data)
         if (!result.replayed) await broadcast(options.windows, result.change)
         return { ok: true, requestId, value: result.value }

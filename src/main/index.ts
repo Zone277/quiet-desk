@@ -126,6 +126,10 @@ app.whenReady().then(async () => {
   const preloadPath = resolve(__dirname, '../preload/index.js')
   const rendererDirectory = resolve(__dirname, '../renderer')
   const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  let failNextCaptureSubmit = Boolean(
+    process.env.QUIETDESK_TEST_USER_DATA &&
+    process.env.QUIETDESK_TEST_FAIL_NEXT_CAPTURE_SUBMIT === '1'
+  )
 
   let resolveWindows: (windows: QuietDeskWindows) => void = () => undefined
   let rejectWindows: (error: unknown) => void = () => undefined
@@ -165,6 +169,11 @@ app.whenReady().then(async () => {
     defaultLocale: detectLocale(),
     captureController: captureControllerPromise,
     shortcutManager: shortcutManagerPromise,
+    failCaptureSubmitOnce: () => {
+      if (!failNextCaptureSubmit) return false
+      failNextCaptureSubmit = false
+      return true
+    },
     openExternal: async (url) => {
       if (
         process.env.QUIETDESK_TEST_USER_DATA &&
