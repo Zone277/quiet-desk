@@ -1,13 +1,18 @@
-import { app, nativeTheme } from 'electron'
+import { app, globalShortcut, nativeTheme, shell } from 'electron'
 import { isAbsolute, resolve } from 'node:path'
 import { FixedClock, SystemClock, type Clock } from '../shared/clock'
-import type { CreateNoteRequest } from '../shared/ipc-contract'
+import { defaultCaptureShortcut, type CreateNoteRequest } from '../shared/ipc-contract'
 import { createShellWindow } from './app-shell-windows'
 import { registerDesktopSpikeIpc } from './ipc/desktop-spike-ipc'
 import { registerQuietDeskIpc } from './ipc/quietdesk-ipc'
 import type { QuietDeskWindows } from './ipc/window-registry'
+import { GlobalShortcutManager } from './platform/global-shortcut-manager'
 import { CoreDataService } from './services/core-data-service'
 import { NoteStorageService } from './services/note-storage-service'
+import {
+  createCaptureWindowController,
+  type CaptureWindowController
+} from './windows/capture-window-controller'
 import { createDesktopSpikeWindow, type DesktopSpikeController } from './windows/desktop-spike-window'
 
 const STORAGE_SMOKE_NOTE_ID = '20000000-0000-4000-8000-000000000001'
@@ -18,6 +23,9 @@ const STORAGE_SMOKE_INSTANT = '2026-09-21T08:00:00.000Z'
 let controller: DesktopSpikeController | undefined
 let storage: CoreDataService | undefined
 let unregisterQuietDeskIpc: (() => void) | undefined
+let captureWindowController: CaptureWindowController | undefined
+let captureShortcutManager: GlobalShortcutManager | undefined
+let testOccupiedShortcut: string | undefined
 
 function configureUserDataPath(): void {
   const requestedUserData = process.env.QUIETDESK_TEST_USER_DATA
@@ -126,6 +134,20 @@ app.whenReady().then(async () => {
     rejectWindows = rejectPromise
   })
 
+  let resolveCaptureController: (captureController: CaptureWindowController) => void = () => undefined
+  let rejectCaptureController: (error: unknown) => void = () => undefined
+  const captureControllerPromise = new Promise<CaptureWindowController>((resolvePromise, rejectPromise) => {
+    resolveCaptureController = resolvePromise
+    rejectCaptureController = rejectPromise
+  })
+
+  let resolveShortcutManager: (shortcutManager: GlobalShortcutManager) => void = () => undefined
+  let rejectShortcutManager: (error: unknown) => void = () => undefined
+  const shortcutManagerPromise = new Promise<GlobalShortcutManager>((resolvePromise, rejectPromise) => {
+    resolveShortcutManager = resolvePromise
+    rejectShortcutManager = rejectPromise
+  })
+
   const controllerPromise = createDesktopSpikeWindow({
     preloadPath,
     rendererUrl: rendererEntry(rendererUrl, 'widget'),
@@ -141,6 +163,18 @@ app.whenReady().then(async () => {
     clock,
     appTimeZone,
     defaultLocale: detectLocale(),
+    captureController: captureControllerPromise,
+    shortcutManager: shortcutManagerPromise,
+    openExternal: async (url) => {
+      if (
+        process.env.QUIETDESK_TEST_USER_DATA &&
+        process.env.QUIETDESK_TEST_DISABLE_EXTERNAL_OPEN === '1'
+      ) {
+        console.info(`QUIETDESK_TEST_EXTERNAL_LINK ${JSON.stringify({ url })}`)
+        return
+      }
+      await shell.openExternal(url)
+    },
     applyTheme: (theme) => {
       nativeTheme.themeSource = theme
     },
@@ -166,9 +200,32 @@ app.whenReady().then(async () => {
       })
     ])
     controller = widgetController
+    captureWindowController = createCaptureWindowController(capture)
+    resolveCaptureController(captureWindowController)
+
+    const initialShortcut = storage.getOrCreateCaptureShortcut(defaultCaptureShortcut)
+    if (
+      process.env.QUIETDESK_TEST_USER_DATA &&
+      process.env.QUIETDESK_TEST_OCCUPY_SHORTCUT === '1' &&
+      globalShortcut.register(initialShortcut, () => undefined)
+    ) {
+      testOccupiedShortcut = initialShortcut
+    }
+
+    captureShortcutManager = new GlobalShortcutManager({
+      registrar: globalShortcut,
+      initialAccelerator: initialShortcut,
+      onActivate: () => {
+        captureWindowController?.activate('global-shortcut')
+      }
+    })
+    captureShortcutManager.register()
+    resolveShortcutManager(captureShortcutManager)
     resolveWindows({ widget: widgetController.window, capture, library })
   } catch (error) {
     rejectWindows(error)
+    rejectCaptureController(error)
+    rejectShortcutManager(error)
     throw error
   }
 
@@ -182,6 +239,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('before-quit', () => {
+  captureShortcutManager?.dispose()
+  captureShortcutManager = undefined
+  if (testOccupiedShortcut) globalShortcut.unregister(testOccupiedShortcut)
+  testOccupiedShortcut = undefined
+  captureWindowController?.dispose()
+  captureWindowController = undefined
   unregisterQuietDeskIpc?.()
   unregisterQuietDeskIpc = undefined
   storage?.close()

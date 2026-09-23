@@ -15,26 +15,35 @@ import {
   getEntityHistoryRequestSchema,
   getEntityRequestSchema,
   getNoteRequestSchema,
+  getShortcutRequestSchema,
   getWidgetSnapshotRequestSchema,
   hideWindowRequestSchema,
   listTrashRequestSchema,
+  openExternalRequestSchema,
   permanentlyDeleteEntityRequestSchema,
   rescheduleTaskRequestSchema,
   saveDraftRequestSchema,
   setTaskCompletionRequestSchema,
   showWindowRequestSchema,
+  submitDraftRequestSchema,
   updateAppearanceRequestSchema,
   updateNoteRequestSchema,
   updateScheduleRequestSchema,
+  updateShortcutRequestSchema,
   updateTaskRequestSchema,
   type AppearanceSettings,
   type BootstrapSnapshot,
   type ChangeEvent,
+  type CaptureShortcutStatus,
   type IpcFailure,
   type IpcResult,
+  type OpenExternalResult,
+  type SubmitDraftReceipt,
   type Theme
 } from '../../shared/ipc-contract'
+import type { GlobalShortcutManager } from '../platform/global-shortcut-manager'
 import type { CoreDataService, MutationResult } from '../services/core-data-service'
+import type { CaptureWindowController } from '../windows/capture-window-controller'
 import { senderWindowKind, type QuietDeskWindows } from './window-registry'
 
 const IMPLEMENTED_CAPABILITIES = [
@@ -55,10 +64,14 @@ const IMPLEMENTED_CAPABILITIES = [
   'schedules.update',
   'drafts.get',
   'drafts.save',
+  'drafts.submit',
   'entities.trash',
   'entities.restore',
   'entities.permanentlyDelete',
   'settings.updateAppearance',
+  'shortcuts.get',
+  'shortcuts.update',
+  'links.openExternal',
   'windows.show',
   'windows.hide',
   'windows.subscribeContext',
@@ -67,8 +80,9 @@ const IMPLEMENTED_CAPABILITIES = [
 
 const DEFERRED_CAPABILITIES = [
   'Daily Log generation',
-  'Markdown preview and export',
-  'capture keyboard and IME acceptance'
+  'Markdown export',
+  'real Windows IME acceptance',
+  'tray lifecycle'
 ] as const
 
 const HANDLER_CHANNELS = [
@@ -89,10 +103,14 @@ const HANDLER_CHANNELS = [
   QUIETDESK_CHANNELS.updateSchedule,
   QUIETDESK_CHANNELS.getDraft,
   QUIETDESK_CHANNELS.saveDraft,
+  QUIETDESK_CHANNELS.submitDraft,
   QUIETDESK_CHANNELS.trashEntity,
   QUIETDESK_CHANNELS.restoreEntity,
   QUIETDESK_CHANNELS.permanentlyDeleteEntity,
   QUIETDESK_CHANNELS.updateAppearance,
+  QUIETDESK_CHANNELS.getShortcut,
+  QUIETDESK_CHANNELS.updateShortcut,
+  QUIETDESK_CHANNELS.openExternal,
   QUIETDESK_CHANNELS.showWindow,
   QUIETDESK_CHANNELS.hideWindow
 ] as const
@@ -103,6 +121,9 @@ interface QuietDeskIpcOptions {
   clock: Clock
   appTimeZone: string
   defaultLocale: 'zh-CN' | 'en-US'
+  captureController: Promise<CaptureWindowController>
+  shortcutManager: Promise<GlobalShortcutManager>
+  openExternal(url: string): Promise<void>
   applyTheme(theme: Theme): void
   resolvedTheme(): 'light' | 'dark'
 }
@@ -236,6 +257,7 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
 
       try {
         const appearance = options.service.getOrCreateAppearance(options.defaultLocale)
+        const shortcut = (await options.shortcutManager).getStatus()
         options.applyTheme(appearance.theme)
         return {
           ok: true,
@@ -250,12 +272,7 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
             currentDate: dateInTimeZone(options.clock, options.appTimeZone),
             dataRevision: options.service.getDataRevision(),
             stage: 4,
-            captureShortcut: {
-              accelerator: 'Ctrl+Shift+Space',
-              defaultAccelerator: 'Ctrl+Shift+Space',
-              registered: false,
-              failure: 'unavailable'
-            },
+            captureShortcut: shortcut,
             implementedCapabilities: [...IMPLEMENTED_CAPABILITIES],
             deferredCapabilities: [...DEFERRED_CAPABILITIES]
           }
@@ -303,6 +320,25 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
   registerMutation(QUIETDESK_CHANNELS.saveDraft, 'save draft', saveDraftRequestSchema,
     (request) => options.service.saveDraft(request))
 
+  ipcMain.handle(
+    QUIETDESK_CHANNELS.submitDraft,
+    async (event, raw: unknown): Promise<IpcResult<SubmitDraftReceipt>> => {
+      const requestId = requestIdFrom(raw)
+      if (await authorize(event, options.windows) !== 'capture') {
+        return failure(requestId, 'FORBIDDEN', 'Only Quick Capture may submit its draft')
+      }
+      const parsed = submitDraftRequestSchema.safeParse(raw)
+      if (!parsed.success) return invalidRequest(requestId, 'submit draft', parsed.error.issues)
+      try {
+        const result = options.service.submitDraft(parsed.data)
+        if (!result.replayed) await broadcast(options.windows, result.change)
+        return { ok: true, requestId, value: result.value }
+      } catch (error) {
+        return serviceFailure(requestId, 'submit draft', error)
+      }
+    }
+  )
+
   registerMutation(QUIETDESK_CHANNELS.trashEntity, 'move entity to trash', entityMutationRequestSchema,
     (request) => options.service.trashEntity(request))
   registerMutation(QUIETDESK_CHANNELS.restoreEntity, 'restore entity', entityMutationRequestSchema,
@@ -322,6 +358,65 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
     (appearance) => options.applyTheme(appearance.theme)
   )
 
+  ipcMain.handle(
+    QUIETDESK_CHANNELS.getShortcut,
+    async (event, raw: unknown): Promise<IpcResult<CaptureShortcutStatus>> => {
+      const requestId = requestIdFrom(raw)
+      if (await authorize(event, options.windows) !== 'library') {
+        return failure(requestId, 'FORBIDDEN', 'Only Library may read shortcut settings')
+      }
+      const parsed = getShortcutRequestSchema.safeParse(raw)
+      if (!parsed.success) return invalidRequest(requestId, 'get shortcut', parsed.error.issues)
+      return { ok: true, requestId, value: (await options.shortcutManager).getStatus() }
+    }
+  )
+
+  ipcMain.handle(
+    QUIETDESK_CHANNELS.updateShortcut,
+    async (event, raw: unknown): Promise<IpcResult<CaptureShortcutStatus>> => {
+      const requestId = requestIdFrom(raw)
+      if (await authorize(event, options.windows) !== 'library') {
+        return failure(requestId, 'FORBIDDEN', 'Only Library may update shortcut settings')
+      }
+      const parsed = updateShortcutRequestSchema.safeParse(raw)
+      if (!parsed.success) return invalidRequest(requestId, 'update shortcut', parsed.error.issues)
+      let mutation: MutationResult<{ accelerator: string }> | undefined
+      try {
+        const manager = await options.shortcutManager
+        const status = await manager.reconfigure(parsed.data.payload.accelerator, () => {
+          mutation = options.service.updateCaptureShortcut(parsed.data)
+        })
+        if (mutation !== undefined && !mutation.replayed) {
+          await broadcast(options.windows, mutation.change)
+        }
+        return { ok: true, requestId, value: status }
+      } catch (error) {
+        return serviceFailure(requestId, 'update shortcut', error)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    QUIETDESK_CHANNELS.openExternal,
+    async (event, raw: unknown): Promise<IpcResult<OpenExternalResult>> => {
+      const requestId = requestIdFrom(raw)
+      const senderKind = await authorize(event, options.windows)
+      if (senderKind !== 'capture' && senderKind !== 'library') {
+        return failure(requestId, 'FORBIDDEN', 'Only Markdown views may open external links')
+      }
+      const parsed = openExternalRequestSchema.safeParse(raw)
+      if (!parsed.success) return invalidRequest(requestId, 'open external link', parsed.error.issues)
+      const normalizedUrl = new URL(parsed.data.payload.url).toString()
+      try {
+        await options.openExternal(normalizedUrl)
+        return { ok: true, requestId, value: { opened: true, url: normalizedUrl } }
+      } catch (error) {
+        console.error('QUIETDESK_OPEN_EXTERNAL_ERROR', error)
+        return failure(requestId, 'INTERNAL_ERROR', 'Unable to open the external link', true)
+      }
+    }
+  )
+
   ipcMain.handle(QUIETDESK_CHANNELS.showWindow, async (event, raw: unknown) => {
     const requestId = requestIdFrom(raw)
     const senderKind = await authorize(event, options.windows)
@@ -330,10 +425,16 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
     }
     const parsed = showWindowRequestSchema.safeParse(raw)
     if (!parsed.success) return invalidRequest(requestId, 'show window', parsed.error.issues)
+    if (parsed.data.payload.target === 'capture') {
+      const shown = (await options.captureController).activate('widget')
+      return shown
+        ? { ok: true, requestId, value: { shown: true as const } }
+        : failure(requestId, 'INTERNAL_ERROR', 'Capture window is unavailable')
+    }
     const windows = await options.windows
-    const target = windows[parsed.data.payload.target]
+    const target = windows.library
     if (target.isDestroyed()) return failure(requestId, 'INTERNAL_ERROR', 'Target window is unavailable')
-    if (parsed.data.payload.target === 'library' && parsed.data.payload.selectedDate) {
+    if (parsed.data.payload.selectedDate) {
       target.webContents.send(QUIETDESK_CHANNELS.windowContext, {
         target: 'library',
         selectedDate: parsed.data.payload.selectedDate
@@ -352,8 +453,13 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
     if (senderKind !== parsed.data.payload.target) {
       return failure(requestId, 'FORBIDDEN', 'A window may only hide itself')
     }
+    if (parsed.data.payload.target === 'capture') {
+      return (await options.captureController).hide()
+        ? { ok: true, requestId, value: { hidden: true as const } }
+        : failure(requestId, 'INTERNAL_ERROR', 'Capture window is unavailable')
+    }
     const windows = await options.windows
-    const target = windows[parsed.data.payload.target]
+    const target = windows.library
     if (target.isDestroyed()) return failure(requestId, 'INTERNAL_ERROR', 'Target window is unavailable')
     target.hide()
     return { ok: true, requestId, value: { hidden: true as const } }

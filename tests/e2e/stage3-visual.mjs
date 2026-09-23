@@ -37,8 +37,8 @@ async function writeManifest(path, manifest) {
 
 async function requireVisualCapabilities(runtime) {
   const snapshot = await bootstrap(runtime.pages.get('widget'), 'widget')
-  assert.equal(snapshot.contractVersion, 2)
-  assert.equal(snapshot.stage, 3)
+  assert.equal(snapshot.contractVersion, 3)
+  assert.equal(snapshot.stage, 4)
   const required = [
     ...requiredCapabilities.filter((capability) => [
       'widget.getSnapshot',
@@ -129,7 +129,7 @@ const manifest = {
   runId,
   generatedAtUtc: new Date().toISOString(),
   generator: 'tests/e2e/stage3-visual.mjs',
-  contractVersion: 2,
+  contractVersion: 3,
   generationStatus: 'RUNNING',
   visualInspectionStatus: 'NOT_RUN',
   visualInspectionNote: 'Screenshots were generated only. Lead must open and inspect every image before visual PASS.',

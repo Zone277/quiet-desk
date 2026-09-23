@@ -28,12 +28,11 @@ class FakeRegistrar implements GlobalShortcutRegistrar {
 }
 
 function createManager(
-  registrar: FakeRegistrar,
-  persistAccelerator: (accelerator: string) => void | Promise<void> = () => undefined
+  registrar: FakeRegistrar
 ): { manager: GlobalShortcutManager; onActivate: ReturnType<typeof vi.fn> } {
   const onActivate = vi.fn()
   return {
-    manager: new GlobalShortcutManager({ registrar, persistAccelerator, onActivate }),
+    manager: new GlobalShortcutManager({ registrar, onActivate }),
     onActivate
   }
 }
@@ -70,12 +69,13 @@ describe('GlobalShortcutManager', () => {
   test('registers and persists a candidate before unregistering the old key', async () => {
     const registrar = new FakeRegistrar()
     const timeline = registrar.calls
-    const { manager } = createManager(registrar, (accelerator) => {
+    const { manager } = createManager(registrar)
+    const persist = (accelerator: string): void => {
       timeline.push(`persist:${accelerator}`)
-    })
+    }
     manager.register()
 
-    const status = await manager.reconfigure('Ctrl+Alt+N')
+    const status = await manager.reconfigure('Ctrl+Alt+N', persist)
 
     expect(status).toMatchObject({ accelerator: 'Ctrl+Alt+N', registered: true, failure: null })
     expect(timeline).toEqual([
@@ -89,17 +89,17 @@ describe('GlobalShortcutManager', () => {
   test('keeps the old registration on invalid or conflicting candidates', async () => {
     const registrar = new FakeRegistrar()
     const persist = vi.fn()
-    const { manager, onActivate } = createManager(registrar, persist)
+    const { manager, onActivate } = createManager(registrar)
     manager.register()
 
-    expect(await manager.reconfigure('Space')).toMatchObject({
+    expect(await manager.reconfigure('Space', persist)).toMatchObject({
       accelerator: defaultCaptureShortcut,
       registered: true,
       failure: 'invalid'
     })
 
     registrar.rejected.add('Ctrl+Alt+N')
-    expect(await manager.reconfigure('Ctrl+Alt+N')).toMatchObject({
+    expect(await manager.reconfigure('Ctrl+Alt+N', persist)).toMatchObject({
       accelerator: defaultCaptureShortcut,
       registered: true,
       failure: 'conflict'
@@ -114,12 +114,13 @@ describe('GlobalShortcutManager', () => {
   test('rolls back the candidate when persistence fails', async () => {
     const registrar = new FakeRegistrar()
     const persistenceError = new Error('storage unavailable')
-    const { manager, onActivate } = createManager(registrar, () => {
+    const { manager, onActivate } = createManager(registrar)
+    const persist = (): void => {
       throw persistenceError
-    })
+    }
     manager.register()
 
-    await expect(manager.reconfigure('Ctrl+Alt+N')).rejects.toBe(persistenceError)
+    await expect(manager.reconfigure('Ctrl+Alt+N', persist)).rejects.toBe(persistenceError)
 
     expect(manager.getStatus()).toMatchObject({
       accelerator: defaultCaptureShortcut,

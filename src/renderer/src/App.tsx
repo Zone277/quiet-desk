@@ -117,6 +117,17 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         data-state="ready"
         data-revision={bootstrap.dataRevision}
       >
+        {windowKind === 'widget' && bootstrap.captureShortcut.failure !== null
+          ? (
+              <p className="inline-error shortcut-message" data-testid="shortcut-conflict" role="alert">
+                {bootstrap.captureShortcut.failure === 'conflict'
+                  ? copy.shortcutConflict
+                  : bootstrap.captureShortcut.failure === 'invalid'
+                    ? copy.shortcutInvalid
+                    : copy.shortcutUnavailable}
+              </p>
+            )
+          : null}
         {windowKind === 'widget'
           ? <WidgetView bootstrap={bootstrap} copy={copy} />
           : windowKind === 'capture'

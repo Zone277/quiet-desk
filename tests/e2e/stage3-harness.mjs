@@ -10,13 +10,15 @@ export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..'
 export const apiAllowlist = Object.freeze({
   app: ['bootstrap'],
   changes: ['subscribe'],
-  drafts: ['get', 'save'],
+  drafts: ['get', 'save', 'submit'],
   entities: ['permanentlyDelete', 'restore', 'trash'],
   library: ['getDay', 'getEntity', 'getHistory', 'listTrash'],
   notes: ['create', 'get', 'update'],
   schedules: ['create', 'update'],
   settings: ['updateAppearance'],
+  shortcuts: ['get', 'update'],
   tasks: ['create', 'reschedule', 'setCompletion', 'update'],
+  links: ['openExternal'],
   widget: ['getSnapshot'],
   windows: ['hide', 'show', 'subscribeContext']
 })

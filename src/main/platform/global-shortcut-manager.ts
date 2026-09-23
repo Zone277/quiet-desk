@@ -11,10 +11,11 @@ export interface GlobalShortcutRegistrar {
 
 export interface GlobalShortcutManagerOptions {
   registrar: GlobalShortcutRegistrar
-  persistAccelerator(accelerator: string): void | Promise<void>
   onActivate(): void
   initialAccelerator?: string
 }
+
+export type PersistShortcut = (accelerator: string) => void | Promise<void>
 
 type ShortcutFailure = CaptureShortcutStatus['failure']
 
@@ -31,7 +32,6 @@ export class GlobalShortcutManager {
   private transition: Promise<void> = Promise.resolve()
 
   private readonly registrar: GlobalShortcutRegistrar
-  private readonly persistAccelerator: GlobalShortcutManagerOptions['persistAccelerator']
   private readonly onActivate: GlobalShortcutManagerOptions['onActivate']
   private readonly activationCallback = (): void => {
     if (!this.disposed) this.onActivate()
@@ -39,7 +39,6 @@ export class GlobalShortcutManager {
 
   constructor(options: GlobalShortcutManagerOptions) {
     this.registrar = options.registrar
-    this.persistAccelerator = options.persistAccelerator
     this.onActivate = options.onActivate
 
     const initial = shortcutAcceleratorSchema.safeParse(
@@ -76,8 +75,8 @@ export class GlobalShortcutManager {
     return this.getStatus()
   }
 
-  reconfigure(candidate: string): Promise<CaptureShortcutStatus> {
-    const operation = this.transition.then(async () => await this.performReconfigure(candidate))
+  reconfigure(candidate: string, persistAccelerator: PersistShortcut): Promise<CaptureShortcutStatus> {
+    const operation = this.transition.then(async () => await this.performReconfigure(candidate, persistAccelerator))
     this.transition = operation.then(
       () => undefined,
       () => undefined
@@ -106,7 +105,10 @@ export class GlobalShortcutManager {
     this.failure = 'unavailable'
   }
 
-  private async performReconfigure(candidate: string): Promise<CaptureShortcutStatus> {
+  private async performReconfigure(
+    candidate: string,
+    persistAccelerator: PersistShortcut
+  ): Promise<CaptureShortcutStatus> {
     if (this.disposed) {
       this.failure = 'unavailable'
       return this.getStatus()
@@ -133,7 +135,7 @@ export class GlobalShortcutManager {
 
     this.pendingCandidate = nextAccelerator
     try {
-      await this.persistAccelerator(nextAccelerator)
+      await persistAccelerator(nextAccelerator)
     } catch (error) {
       this.unregisterPendingCandidate(nextAccelerator)
       throw error
