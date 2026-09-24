@@ -3,6 +3,7 @@ import type { BootstrapSnapshot, DayViewSnapshot } from '../../shared/ipc-contra
 import type { EntityRecord, OperationSnapshot, TrashEntry } from '../../shared/model'
 import type { Copy } from './i18n'
 import { MarkdownView } from './MarkdownView'
+import { DailyLogPanel } from './DailyLogPanel'
 import { ShortcutSettings } from './ShortcutSettings'
 import {
   entityRevision,
@@ -112,23 +113,26 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
   const [pendingId, setPendingId] = useState<string>()
   const [actionError, setActionError] = useState<string>()
   const [confirmDelete, setConfirmDelete] = useState<TrashEntry>()
+  const [logRefreshToken, setLogRefreshToken] = useState(0)
   const dayGeneration = useRef(0)
+  const selectedDateRef = useRef(selectedDate)
   const active = useRef(true)
+  selectedDateRef.current = selectedDate
 
   const loadDay = useCallback(async (): Promise<void> => {
     const generation = ++dayGeneration.current
-    setDay((current) => current.phase === 'ready' ? current : { phase: 'loading' })
+    setDay({ phase: 'loading' })
     try {
       const result = await window.quietDesk.library.getDay({
         requestId: newRequestId(),
         payload: { date: selectedDate }
       })
-      if (!active.current || generation !== dayGeneration.current) return
+      if (!active.current || generation !== dayGeneration.current || selectedDateRef.current !== selectedDate) return
       setDay(result.ok
         ? { phase: 'ready', value: result.value }
         : { phase: 'error', message: ipcError(result) })
     } catch (reason) {
-      if (active.current && generation === dayGeneration.current) {
+      if (active.current && generation === dayGeneration.current && selectedDateRef.current === selectedDate) {
         setDay({ phase: 'error', message: unknownError(reason) })
       }
     }
@@ -218,6 +222,8 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
       else {
         setSelected(undefined)
         setHistory([])
+        setLogRefreshToken((value) => value + 1)
+        await Promise.all([loadTrash(), loadDay()])
       }
     } catch (reason) {
       setActionError(unknownError(reason))
@@ -239,6 +245,10 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
         }
       })
       if (!result.ok) setActionError(ipcError(result))
+      else {
+        setLogRefreshToken((value) => value + 1)
+        await Promise.all([loadTrash(), loadDay()])
+      }
     } catch (reason) {
       setActionError(unknownError(reason))
     } finally {
@@ -260,7 +270,11 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
         }
       })
       if (!result.ok) setActionError(ipcError(result))
-      else setConfirmDelete(undefined)
+      else {
+        setConfirmDelete(undefined)
+        setLogRefreshToken((value) => value + 1)
+        await Promise.all([loadTrash(), loadDay()])
+      }
     } catch (reason) {
       setActionError(unknownError(reason))
     } finally {
@@ -290,7 +304,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
         {mode === 'day' ? (
           <div className="date-browser">
             <button type="button" className="icon-button" data-testid="library-prev-date" aria-label={copy.previousDate} onClick={() => setSelectedDate(nextDate(selectedDate, -1))}>‹</button>
-            <input data-testid="library-date" type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <input data-testid="library-date" type="date" value={selectedDate} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value) }} />
             <button type="button" className="icon-button" data-testid="library-next-date" aria-label={copy.nextDate} onClick={() => setSelectedDate(nextDate(selectedDate, 1))}>›</button>
             <button type="button" className="text-button" data-testid="library-today" onClick={() => setSelectedDate(bootstrap.currentDate)}>{copy.today}</button>
           </div>
@@ -424,6 +438,10 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
           ) : null}
         </section>
       )}
+
+      <div hidden={mode !== 'day'}>
+        <DailyLogPanel date={selectedDate} locale={bootstrap.locale} copy={copy} refreshToken={logRefreshToken} />
+      </div>
 
       {confirmDelete ? (
         <div className="dialog-backdrop" role="presentation">

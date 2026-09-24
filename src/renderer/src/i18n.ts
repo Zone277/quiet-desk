@@ -83,6 +83,21 @@ export interface Copy {
   dayTasks: string
   daySchedules: string
   dayNotes: string
+  dailyLog: string
+  logCompleted: string
+  logPending: string
+  logPlanned: string
+  logNotes: string
+  logNoItems: string
+  logManual: string
+  logConflict: string
+  logUseMyText: string
+  logExport: string
+  logExporting: string
+  logExportSaved: string
+  logExportCancelled: string
+  logExportFailed: string
+  logIndependentCopyWarning: string
   history: string
   noHistory: string
   trash: string
@@ -185,6 +200,21 @@ const ZH: Copy = {
   dayTasks: '当日任务',
   daySchedules: '当日日程',
   dayNotes: '当日笔记',
+  dailyLog: '每日日志',
+  logCompleted: '当天完成',
+  logPending: '截至日界线仍待办',
+  logPlanned: '当天安排（计划）',
+  logNotes: '当天记录的笔记',
+  logNoItems: '本区暂无内容',
+  logManual: '手写补充（Markdown）',
+  logConflict: '手写区有其他版本，输入已保留',
+  logUseMyText: '以我的文字替换并保存',
+  logExport: '导出 Markdown',
+  logExporting: '正在导出…',
+  logExportSaved: '导出已保存',
+  logExportCancelled: '已取消导出',
+  logExportFailed: '导出失败',
+  logIndependentCopyWarning: '已导出的文件及外部备份是独立副本；之后的删除不会自动修改它们。',
   history: '操作历史',
   noHistory: '没有可显示的操作历史',
   trash: '回收站',
@@ -287,6 +317,21 @@ const EN: Copy = {
   dayTasks: 'Tasks for this day',
   daySchedules: 'Schedule for this day',
   dayNotes: 'Notes for this day',
+  dailyLog: 'Daily Log',
+  logCompleted: 'Completed that day',
+  logPending: 'Pending at day boundary',
+  logPlanned: 'Schedule (planned)',
+  logNotes: 'Notes recorded that day',
+  logNoItems: 'Nothing in this section',
+  logManual: 'Manual addition (Markdown)',
+  logConflict: 'The manual section changed elsewhere; your text is preserved',
+  logUseMyText: 'Replace saved version and save my text',
+  logExport: 'Export Markdown',
+  logExporting: 'Exporting…',
+  logExportSaved: 'Export saved',
+  logExportCancelled: 'Export cancelled',
+  logExportFailed: 'Export failed',
+  logIndependentCopyWarning: 'Exported files and external backups are independent copies; later deletions do not update them.',
   history: 'Operation history',
   noHistory: 'No operation history to show',
   trash: 'Trash',

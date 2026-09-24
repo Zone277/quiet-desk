@@ -852,6 +852,62 @@ button:active:not(:disabled) {
   align-items: start;
 }
 
+.daily-log-panel,
+.daily-log-sections,
+.daily-log-manual {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+}
+
+.daily-log-heading h3 { font-size: 18px; }
+
+.daily-log-sections {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.daily-log-section {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.daily-log-section h4,
+.daily-log-manual h4 { font-size: 13px; }
+
+.daily-log-items {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding-left: 1.5em;
+}
+
+.daily-log-items .markdown-view { padding: 0; }
+.daily-log-items .markdown-view p { margin: 0; }
+
+.daily-log-manual { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+
+.daily-log-manual textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  font: 12px/1.6 "Cascadia Mono", Consolas, monospace;
+}
+
+.daily-log-manual-preview { min-height: 160px; }
+
+.daily-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.daily-log-save-status { margin-right: auto; color: var(--text-secondary); font-size: 11px; }
+.daily-log-copy-warning { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
+
 .shortcut-settings {
   display: grid;
   grid-template-columns: minmax(190px, 1fr) minmax(260px, 1.2fr);
@@ -1223,6 +1279,8 @@ kbd {
   .library-columns {
     grid-template-columns: 1fr;
   }
+
+  .daily-log-sections { grid-template-columns: 1fr; }
 
   .shortcut-settings {
     grid-template-columns: 1fr;
