@@ -13,7 +13,8 @@ import {
   launchQuietDesk,
   makeIsolatedRoot,
   readChangeProbe,
-  request
+  request,
+  shiftDateOnly
 } from './stage3-harness.mjs'
 
 const CAPTURE_ROOT_PREFIX = 'quietdesk-stage4-capture-'
@@ -32,6 +33,7 @@ const primaryMarkdown = [
   '第二行：由 Enter 键创建。',
   '',
   '- [ ] Markdown 清单只是文档内容',
+  '明天上午九点：时间文字仍是笔记内容',
   '- ~~GFM 删除线~~',
   '',
   '> 引用 / blockquote',
@@ -396,6 +398,8 @@ async function assertRapidSubmitCrossWindowAndReading(runtime) {
 
   const snapshot = await widgetSnapshot(widget)
   assert.equal(snapshot.totals.recentNotes, 1, 'Rapid Ctrl+Enter created duplicate Notes')
+  assert.equal(snapshot.totals.currentTasks, 0, 'Markdown checklist created a Task')
+  assert.equal(snapshot.totals.todaySchedules, 0, 'Natural-language date created a Schedule')
   assert.equal(snapshot.recentNotes[0].note.id, noteReference.id)
   assert.equal(snapshot.recentNotes[0].note.title, PRIMARY_TITLE)
   assert.equal(snapshot.recentNotes[0].note.bodyMarkdown, submittedMarkdown)
@@ -448,6 +452,72 @@ async function assertCommittedContentAfterRestart(runtime, userData, { currentDa
   return restarted
 }
 
+async function assertExplicitCaptureTypes(runtime) {
+  const capture = runtime.pages.get('capture')
+  const widget = runtime.pages.get('widget')
+  const library = runtime.pages.get('library')
+  const currentDate = (await bootstrap(capture, 'capture')).currentDate
+  const nextDate = shiftDateOnly(currentDate, 1)
+  const afterNextDate = shiftDateOnly(currentDate, 2)
+
+  await openCaptureFromWidget(runtime)
+  await capture.getByRole('button', { name: '任务', exact: true }).click()
+  await capture.locator('[data-testid="capture-title"]').fill('显式任务 / task')
+  await capture.locator('[data-testid="capture-body"]').fill('- [ ] 这只是任务说明中的 Markdown 清单\n2026-12-31 不自动解析')
+  await capture.locator('[data-testid="capture-plan-date"]').fill(currentDate)
+  await capture.locator('[data-testid="capture-due-date"]').fill(nextDate)
+  await capture.locator('[data-testid="capture-submit"]').click()
+  await waitForWindowVisibility(runtime, 'capture', false)
+  await widget.waitForFunction(() => document.querySelectorAll('[data-testid="current-task-item"]').length === 1)
+  const widgetTask = (await widgetSnapshot(widget)).currentTasks[0].task
+  assert.equal(widgetTask.title, '显式任务 / task')
+  assert.equal(widgetTask.planDate, currentDate)
+  assert.equal(widgetTask.dueDate, nextDate)
+  assert.equal((await widgetSnapshot(widget)).totals.recentNotes, 1, 'Markdown checklist created an extra Note')
+
+  await openCaptureFromWidget(runtime)
+  await capture.getByRole('button', { name: '定时日程', exact: true }).click()
+  await capture.locator('[data-testid="capture-title"]').fill('显式跨午夜日程')
+  await capture.locator('[data-testid="capture-start"]').fill(`${currentDate}T23:30`)
+  await capture.locator('[data-testid="capture-end"]').fill(`${nextDate}T00:30`)
+  await capture.locator('[data-testid="capture-submit"]').click()
+  await waitForWindowVisibility(runtime, 'capture', false)
+  const timedToday = (await daySnapshot(library, currentDate)).schedules
+    .find(({ schedule }) => schedule.title === '显式跨午夜日程')
+  assert.ok(timedToday, 'Capture timed schedule missing from start date')
+  assert.equal(timedToday.schedule.kind, 'timed')
+  assert.equal(
+    (await daySnapshot(library, nextDate)).schedules
+      .some(({ schedule }) => schedule.id === timedToday.schedule.id),
+    true,
+    'Capture timed schedule missing from next date'
+  )
+
+  await openCaptureFromWidget(runtime)
+  await capture.getByRole('button', { name: '全天日程', exact: true }).click()
+  await capture.locator('[data-testid="capture-title"]').fill('显式多日全天日程')
+  await capture.locator('[data-testid="capture-start"]').fill(currentDate)
+  await capture.locator('[data-testid="capture-end"]').fill(afterNextDate)
+  await capture.locator('[data-testid="capture-submit"]').click()
+  await waitForWindowVisibility(runtime, 'capture', false)
+  const allDayToday = (await daySnapshot(library, currentDate)).schedules
+    .find(({ schedule }) => schedule.title === '显式多日全天日程')
+  assert.ok(allDayToday, 'Capture all-day schedule missing from start date')
+  assert.equal(allDayToday.schedule.kind, 'all-day')
+  assert.equal(
+    (await daySnapshot(library, nextDate)).schedules
+      .some(({ schedule }) => schedule.id === allDayToday.schedule.id),
+    true,
+    'Capture all-day schedule missing from next date'
+  )
+  assert.equal(
+    (await daySnapshot(library, afterNextDate)).schedules
+      .some(({ schedule }) => schedule.id === allDayToday.schedule.id),
+    false,
+    'Capture all-day schedule appeared on exclusive end date'
+  )
+}
+
 async function runCaptureFlow(root) {
   let runtime
   const processIds = []
@@ -476,6 +546,7 @@ async function runCaptureFlow(root) {
     runtime = await assertCommittedContentAfterRestart(runtime, root, submitted)
     runtime.userData = root
     processIds.push(runtime.runtime.pid)
+    await assertExplicitCaptureTypes(runtime)
     return { runtime: runtime.runtime, processIds, primaryNoteId: submitted.noteId }
   } finally {
     await closeQuietDesk(runtime)

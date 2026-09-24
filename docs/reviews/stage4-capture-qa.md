@@ -4,7 +4,7 @@
 
 生产代码基线：`main@1a9e266d2889f4e47c422a99cc3cc1c38687a04d`
 
-自动化门槛：`PASS`。真实 Windows IME 与真实系统快捷键人工门槛：`NOT_RUN`。
+QA 自动化门槛：`PASS`。QA 结束时真实 Windows IME 与系统快捷键检查为 `NOT_RUN`；Lead 后续补测 IME，见文末补充。
 
 QA agent 新增 `tests/e2e/stage4-capture.mjs` 与本报告，并实际修改 `tests/e2e/stage3-harness.mjs` 以支持受限的 `extraEnv`；agent 最初将该 harness 改动误报为既存改动，Lead 复核 Git diff 后在本报告纠正。Lead 随后在主进程增加仅限隔离测试 userData 的一次性提交故障注入，并把 Stage 4 加入正式 `test:e2e` 脚本。测试沿用 `%TEMP%` 隔离 userData，并在每次运行后验证删除。
 
@@ -75,3 +75,9 @@ QA agent 新增 `tests/e2e/stage4-capture.mjs` 与本报告，并实际修改 `t
 | `PASS` | `docs/reviews/stage4-capture-qa.md` | 记录命令、exit code、版本、过程性失败、最终证据和未测项 |
 | `PASS` | `tests/e2e/stage3-harness.mjs` | 增加 `extraEnv`，固定测试 userData/fallback/show 参数仍在其后覆盖，不能由调用方改写 |
 | `PASS` | 接口变化 | 无公共契约或 preload 表面变化；新增一次性故障注入只在隔离测试 userData 且显式环境变量存在时启用 |
+
+## Lead 后续补测（2026-09-23）
+
+- `PASS`：真实 Windows Build 22631、Electron 44.4.3 Capture 中，通过原生窗口输入逐键输入拼音，截图实际出现系统中文候选栏；空格确认后正文出现汉字。候选栏在场时按 Ctrl+Enter，Capture 未提交、隐藏或清空，之后仍可确认汉字。工具截图和可访问性树见本任务记录。这是实际系统 IME 操作，与 DOM 合成事件分开。
+- `PASS`：扩充 Stage 4 E2E，通过 Capture UI 显式创建 Task、跨午夜定时日程和多日全天日程，并在 Widget/Library 验证；Markdown 清单和自然语言日期未派生独立实体。扩充后 `node tests/e2e/stage4-capture.mjs` 退出 0，两个隔离 userData 均 `removed:true`。
+- `NOT_RUN`：原生 IME 检查没有运行完整视觉矩阵或系统级快捷键。该次单独 IME 测试的临时目录清理命令被执行策略拒绝，目录是否仍存在未再次确认；正式 userData 未访问。

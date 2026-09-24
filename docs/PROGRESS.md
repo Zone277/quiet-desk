@@ -1,6 +1,6 @@
 # QuietDesk 进度
 
-更新日期：2026-09-21（Asia/Shanghai）
+更新日期：2026-09-23（Asia/Shanghai）
 
 ## 当前结论
 
@@ -10,12 +10,13 @@
 | 阶段 1：Windows 桌面宿主 spike | FAIL | 可运行 Electron、WorkerW attach/inspect 和明确 fallback 已实现；150% DPI 精确默认几何失败，关键 Windows GUI 情境仍未执行 |
 | 阶段 2：脚手架、契约与存储 | PASS | 三窗口安全壳、IPC v1、真实 Electron SQLite 关闭重开与 Windows portable 构建已有证据 |
 | 阶段 3：核心数据与 Widget | PASS | IPC v2、事务化 Task/Note/Schedule/Draft、真实 Widget/Capture/Library、业务 E2E 和 24 张逐图视觉检查完成 |
+| 阶段 4：快捷捕获与 Markdown | PASS | IPC v3、全局快捷键生命周期、事务化草稿提交、安全 Markdown、失败重试与跨窗口 Electron E2E 已完成；真实 Windows IME/系统快捷键人工项另列 NOT_RUN |
 | Windows 桌面宿主验收 | NOT_RUN | 原生父子关系子项 PASS；Win+D、覆盖、任务栏/Alt+Tab、连续拖动/缩放和恢复组合没有完整证据 |
-| Electron 构建 | PASS | Electron 44.4.3、Node 24.21.0、electron-vite 5.0.0；阶段 3 最终 `check`、`build`、integration、E2E 均退出 0 |
+| Electron 构建 | PASS | Electron 44.4.3、Node 24.21.0、electron-vite 5.0.0；阶段 4 `check`、`build`、integration 与捕获 E2E 均退出 0 |
 | SQLite / Windows 打包 | NOT_RUN | 开发 Electron 内 SQLite 3.53.4 读写/进程重启为 PASS，阶段 2 portable 构建为 PASS；发布产物内部读写仍未执行，完整项保持 NOT_RUN |
-| 产品验收 A01-A28 | NOT_RUN | A07、A08、A15 已有 PASS；其余含局部证据或留待后续阶段，且 A01-A05 桌面门槛仍未完成 |
+| 产品验收 A01-A28 | NOT_RUN | A07、A08、A11、A12、A13、A15、A21 已有 PASS；其余含局部证据或留待后续阶段，且 A01-A05 桌面门槛仍未完成 |
 
-当前是连接真实 SQLite 的阶段 3 业务开发预览，不是已完成桌面小组件。核心数据与三窗口 UI 可运行，但 150% DPI 几何偏差与未完成的真实桌面 GUI 验收继续阻塞最终桌面组件结论。
+当前是连接真实 SQLite 的阶段 4 业务开发预览，不是已完成桌面小组件。核心数据、三窗口 UI、快捷捕获与安全 Markdown 可运行，但 150% DPI 几何偏差和未完成的桌面宿主 GUI 验收继续阻塞最终桌面组件结论。
 
 ## 本阶段完成项
 
@@ -352,3 +353,41 @@
 - 下一阶段入口是阶段 4：在现有草稿/实体事务与真实 UI 上完成快捷捕获、IME/Ctrl+Enter 行为和安全 Markdown 预览，不提前实现阶段 5 Daily Log。
 
 本轮到此停止，不提前执行阶段 4。
+
+## 阶段 4：快捷捕获与 Markdown（2026-09-23）
+
+### 完成项与真实分工
+
+- Lead 冻结 IPC v3，独占 `src/shared/`、`src/preload/`、`src/main/ipc/`、主入口与依赖锁定，并集成跨窗口 change event、窗口授权和受限外链。Markdown 依赖锁定为 `react-markdown@10.1.0`、`remark-gfm@4.0.1`。
+- Desktop agent Kierkegaard (`01a0c8e7-374c-7920-bdde-9755b1b5d1b0`) 只修改 `src/main/windows/`、`src/main/platform/` 及局部测试，实现默认全局快捷键、冲突状态、重配回滚与 Capture 关闭转隐藏。
+- Data agent Carson (`01a0c8e8-043a-71e1-9e70-65cd9a4883ca`) 只修改主进程数据/服务与局部数据测试，实现草稿到笔记、任务和两类日程的原子提交、历史/change/幂等回执、草稿清理和快捷键持久化。
+- UI agent Nash (`01a0c8e7-3859-7dc2-aade-5c5769abe396`) 只修改 `src/renderer/` 与局部测试，实现默认笔记、显式类型切换、800 ms 去抖草稿、单写入在途、revision/editSeq、防重复提交、Esc 保存收起、失焦保留、composition 判断、Markdown 源码/预览与 Library 阅读。
+- Desktop/UI 只读勘察 agent Wegener (`01a0c8da-1da8-7831-afeb-0daf80c5277a`) 与 Lorentz (`01a0c8da-1e93-7961-aa28-3c5431ac11e7`) 提供接口需求；修改文件 0。
+- 最终 QA agent Linnaeus (`01a0cc05-4e94-7d92-bb15-83cf45bdc984`) 新增 `tests/e2e/stage4-capture.mjs`、`docs/reviews/stage4-capture-qa.md`，并扩展 `tests/e2e/stage3-harness.mjs` 的隔离测试环境参数。它最初把 harness 修改误报为既存改动，Lead 通过 Git diff 纠正。首次 QA agent Gibbs 长时间未产出文件，已关闭，不计入通过证据。
+- Lead 在隔离测试 userData 下增加显式一次性提交故障注入，并复测失败后保留输入、草稿与窗口，以及重试成功且不重复创建；正式运行路径不启用该注入。
+
+### 文件与提交
+
+主要变更：`docs/CONTRACTS.md`、`src/shared/`、`src/preload/`、`src/main/index.ts`、`src/main/ipc/quietdesk-ipc.ts`、`src/main/platform/global-shortcut-manager.ts`、`src/main/windows/capture-window-controller.ts`、`src/main/services/core-data-service.ts`、`src/renderer/src/`、`tests/data/`、`tests/platform/`、`tests/e2e/`、`package.json` 与锁文件。QA 详细逐项证据见 `docs/reviews/stage4-capture-qa.md`。
+
+阶段 4 功能和测试已增量提交并推送 `origin/main`：`27331b6`、`7c86b31`、`b39d63c`、`249a692`、`d215f9b`、`1a9e266`、`30c3b75`。本节进度与验收矩阵另作最终文档提交。
+
+### 最终命令与结果
+
+| 检查 | 状态 | 实际结果 |
+| --- | --- | --- |
+| `npm run check` | PASS | 退出 0；TypeScript 与 9/9 契约测试通过 |
+| 阶段 4 相关 Vitest | PASS | 6 个文件、50/50 测试通过，覆盖 Data、快捷键、Capture 生命周期和 Markdown 组件 |
+| `npm run test:integration` | PASS | 退出 0；实际 Electron 44.4.3 / Node 24.21.0 / SQLite 3.53.4 在隔离 userData 写入、关闭、重开、读回 |
+| `npm run test:e2e`（正式脚本回归） | PASS | 退出 0；构建三个窗口，依次输出 `E2E_WINDOWS_SECURITY_PASS`、`STAGE3_BUSINESS_PASS`、`STAGE4_CAPTURE_PASS`；Stage 4 两个隔离目录均输出 `removed:true` |
+| Stage 4 E2E 独立复跑 | PASS | Lead 重新 build 后运行及再次直接运行均退出 0；默认笔记、多行、Esc/失焦/重启、跨窗刷新、乱序保存、失败重试、快速双 Ctrl+Enter、Markdown 安全和快捷键冲突均有断言 |
+| 事务回滚 | PASS | Data 测试使用 SQLite trigger 在晚期删除草稿时制造失败，证明实体、历史、change、回执和草稿删除全部回滚 |
+| 150% DPI 平台回归 | FAIL | `tests/platform/desktop-spike.platform.test.ts` 4 项中 2 项失败：fallback 480×423、原生 desktop 482×424，不满足 480×420 精确几何；未降低断言 |
+| 真实中文 IME 候选确认 | PASS | Lead 在 Windows Build 22631 的隔离 Electron Capture 窗口，以原生窗口控制逐键输入 `ni` 并观察系统候选栏；空格确认后正文出现 `你`，窗口保持打开。再输入 `hao`，候选栏在场时按 Ctrl+Enter，窗口未提交或清空；随后仍可确认汉字。工具截图与可访问性树保留在本任务记录，这与 DOM composition 模拟分开 |
+| 真实 OS 快捷键按键唤起 | NOT_RUN | 已测注册状态、冲突、改键、持久化与 Widget 回退入口；未实际发送系统级组合键 |
+| SQLite 持续写锁下的 UI 故障重试 | NOT_RUN | QA 过程性运行不稳定；确定性 UI 故障与 Data 事务回滚分别有证据，不等同于该组合情境 |
+| Capture/Library 截图人工检查、外部浏览器实际打开、发布产物运行 | NOT_RUN | 原生 IME 检查查看了 Capture 截图，但未完成全布局视觉矩阵；外链 E2E 只验证主进程 URL 规则并在隔离测试中抑制系统浏览器打开 |
+
+阶段 4 的自动化闭环为 PASS，但产品仍是开发预览。阶段 1 的几何 FAIL 与 Win+D、普通窗口覆盖、任务栏/Alt+Tab、自由拖动缩放、多屏、Explorer/睡眠组合的 NOT_RUN 继续阻止“桌面组件完成”的结论。阶段 5 入口是 Daily Log 与导出；本轮未提前实现。
+
+Lead 随后扩充 `tests/e2e/stage4-capture.mjs`：通过 Capture UI 显式创建 Task、跨午夜定时日程和多日全天日程，并在 Widget/Library 查询验证；笔记中的 Markdown 清单与“明天上午九点”文本没有派生 Task/Schedule。扩充后脚本复跑退出 0，两个隔离 userData 均输出 `removed:true`。另以独立 `%TEMP%/quietdesk-ime-9daaf8723b50488b949d240a398da7e2` 运行真实 IME 检查；Electron 实例已停止，清理命令被执行策略拒绝，目录是否仍存在未再确认，正式 userData 未访问。

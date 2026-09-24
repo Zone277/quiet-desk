@@ -106,3 +106,19 @@
 | A01-A05 桌面门槛 | NOT_RUN | 沿用阶段 1 WorkerW 适配器；本轮没有用 ordinary fallback 或 renderer 截图替代 Win+D、覆盖、任务栏/Alt+Tab、连续鼠标缩放、多屏或 Explorer/睡眠验证 |
 
 阶段 3 最终命令与截图 run 路径见 `docs/PROGRESS.md`；详细 QA 判定见 `docs/reviews/stage3-test-plan.md`。A11/A13/A17-A21/A25-A28 没有因阶段 3 的局部能力而提前标为通过。
+
+## 阶段 4 实际状态（2026-09-23）
+
+| ID / 门槛 | 状态 | 证据与剩余条件 |
+| --- | --- | --- |
+| A11 | PASS | Electron E2E 验证默认笔记、中英混排、Enter 换行、Ctrl+Enter 成功后收起、显式 Task/定时/全天日程 UI 提交；笔记中的 Markdown 清单与自然语言时间未派生实体。Lead 在实际 Windows 中文输入法候选栏中确认汉字，候选栏在场时按 Ctrl+Enter 未提交或清空 Capture；另有 DOM composition 自动断言 |
+| A12 | PASS | Esc 保存并隐藏、Widget 重开与独立 Electron 进程重启恢复、失焦保留；一次性可重试故障后窗口和输入/持久草稿仍在，无实体和事件；重试及快速重复 Ctrl+Enter 只创建一条 Note |
+| A13 | PASS | 单写入在途及 revision/editSeq 防乱序；短时 SQLite 写锁期间制造较新编辑，释放后最终落盘 revision 与正文均为最新快照 |
+| A14 | NOT_RUN | Stage 4 Note 提交后 Widget/Library 收到同一 change event 并刷新；完整创建/完成/恢复三动作同时观察与监听泄漏压力情境未执行 |
+| A21 | PASS | Capture/Library 渲染中 raw HTML 不入 DOM、不执行；远程图片无 `<img>` 和网络请求；代码块/表格可阅读；危险协议和相对地址被 IPC 拒绝，HTTPS 链接只通过受限接口且 renderer 不导航 |
+| A22 | NOT_RUN | v3 preload allowlist、sender 授权、URL schema 与 renderer 无 Node/SQL/shell 子项通过；未登记 webContents 的完整主动攻击情境未执行 |
+| A23 | PASS | 草稿与正式 Note 在同一隔离 userData 经三个不同 Electron PID 恢复；成功提交后草稿删除且重启不复现 |
+| A25 | NOT_RUN | 默认快捷键冲突提示、Widget 回退入口、改键与重启持久化通过；真实 OS 组合键唤起和托盘退出未执行 |
+| A01-A05 桌面门槛 | NOT_RUN | 本轮没有执行 Win+D、覆盖、任务栏/Alt+Tab 等人工组合；150% DPI 精确几何回归仍 FAIL |
+
+命令、版本、PID、清理结果与过程性失败见 `docs/PROGRESS.md` 阶段 4 及 `docs/reviews/stage4-capture-qa.md`。Daily Log、导出和发布产物验收未在本阶段执行。
