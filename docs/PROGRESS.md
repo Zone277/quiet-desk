@@ -391,3 +391,30 @@
 阶段 4 的自动化闭环为 PASS，但产品仍是开发预览。阶段 1 的几何 FAIL 与 Win+D、普通窗口覆盖、任务栏/Alt+Tab、自由拖动缩放、多屏、Explorer/睡眠组合的 NOT_RUN 继续阻止“桌面组件完成”的结论。阶段 5 入口是 Daily Log 与导出；本轮未提前实现。
 
 Lead 随后扩充 `tests/e2e/stage4-capture.mjs`：通过 Capture UI 显式创建 Task、跨午夜定时日程和多日全天日程，并在 Widget/Library 查询验证；笔记中的 Markdown 清单与“明天上午九点”文本没有派生 Task/Schedule。扩充后脚本复跑退出 0，两个隔离 userData 均输出 `removed:true`。另以独立 `%TEMP%/quietdesk-ime-9daaf8723b50488b949d240a398da7e2` 运行真实 IME 检查；Electron 实例已停止，清理命令被执行策略拒绝，目录是否仍存在未再确认，正式 userData 未访问。
+
+## 阶段 5：Daily Log、日期历史与删除传播（2026-09-24）
+
+### 完成与真实分工
+
+- Lead 先收集 Data/UI/QA 三个只读方案，再冻结 `docs/CONTRACTS.md` §12 与 IPC v4；独占公共类型、preload、IPC、主入口和脚本。三个 agent 在共享目录仅修改各自范围，未假定独立 worktree，也未提交 Git。
+- Data agent Averroes (`01a0d16c-51e8-74a2-b16f-028fdf524438`) 仅修改 `src/domain/**`、`src/main/data/**`、`src/main/services/**`、`tests/data/**`：schema v3、操作快照重建、四类自动项、独立手写 revision/幂等、跨日补生成、回收站过滤/恢复与永久删除关联正文清理。
+- UI agent Ptolemy (`01a0d16c-5310-7c40-886f-81f9a8682881`) 仅修改 `src/renderer/**`：Library 日期 Daily Log、源码/预览、保存/冲突/失败、导出状态、独立副本提示、中英文与响应式样式及组件测试。
+- QA agent Singer (`01a0d16c-5443-74e3-97cc-df5bc5414b03`) 仅修改 `tests/e2e/**` 与 `docs/reviews/**`：独立 A/B/C、跳日、零点、同日重开、删除/恢复/永久删除、实际 UTF-8 文件字节、IPC 授权/取消测试。详细记录见 `docs/reviews/stage5-daily-log-qa.md`。
+- Lead 接入 `dailyLogs.get/saveManual/export`，仅 Library 可用；原生保存对话框返回路径不进 renderer。导出在用户选择目标后重新从 SQLite 生成最新 Markdown。启动与唤醒调用补生成；测试独立 userData 与固定 Clock/时区，未触碰正式数据。
+
+### 最终命令与证据
+
+| 检查 | 状态 | 实际结果 |
+| --- | --- | --- |
+| `npm run check` | PASS | 退出 0，TypeScript 与契约测试 10/10 |
+| `npx vitest run tests/data` | PASS | 最终 4 文件 40/40；真实 SQLite，覆盖历史日界线、同时间戳序、同日重开、手写幂等/冲突、DST、停机补生成与删除正文清理 |
+| `npx vitest run --config src/renderer/vitest.config.ts` | PASS | 退出 0，2/2 组件测试；不代表原生窗口视觉验收 |
+| `npm run test:integration` | PASS | 退出 0；Electron 44.4.3 / Node 24.21.0 / SQLite 3.53.4，在隔离目录写入、关闭重开、读回 |
+| `npm run test:e2e` | PASS | 退出 0；阶段 2–5 标记全部输出。Stage 5 经过四个独立 Electron PID、固定上海时区、真实 preload/IPC/SQLite 和重启 |
+| 最终 `node tests/e2e/stage5-daily-log.mjs` | PASS | 退出 0；Data agent 停止写入后独立复跑，`STAGE5_DAILY_LOG_PASS`，导出 UTF-8 文件 278 字节；临时 userData 由 harness 清理 |
+| `git diff --check` | PASS | 退出 0；只有 Windows LF/CRLF 提示，无空白错误 |
+| 真实 Windows 原生保存对话框鼠标/键盘操作 | NOT_RUN | E2E 在测试进程内限定 `dialog.showSaveDialog` 返回值；文件写入、取消、安全边界为 PASS，但未冒充真实对话框人工验收 |
+| 本轮 Library 实际截图逐图视觉检查 | NOT_RUN | 组件与 Electron 交互断言不等于视觉审查 |
+| 阶段 1 桌面宿主/精确几何与发布产物内 SQLite | FAIL / NOT_RUN | 150% DPI 精确 480×420 历史 FAIL 未重测；Win+D 等宿主人工项及 Stage 5 打包产物运行 NOT_RUN |
+
+阶段 5 自动业务闭环完成，但产品仍标为“开发预览，桌面验收未完成”。已导出的 Markdown 与外部备份是独立副本；后续删除只保证应用管理的自动日志和新导出不再含被删正文。下一阶段入口为阶段 6 打包与发布行为，先处理桌面宿主的未验证项；本轮不提前实施。

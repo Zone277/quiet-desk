@@ -530,8 +530,8 @@ async function runCaptureFlow(root) {
     runtime.userData = root
     processIds.push(runtime.runtime.pid)
     const initial = await bootstrap(runtime.pages.get('capture'), 'capture')
-    assert.equal(initial.contractVersion, 3)
-    assert.equal(initial.stage, 4)
+    assert.equal(initial.contractVersion, 4)
+    assert.equal(initial.stage, 5)
     await hideCapture(runtime)
     await openCaptureFromWidget(runtime)
 

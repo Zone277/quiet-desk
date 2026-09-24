@@ -122,3 +122,18 @@
 | A01-A05 桌面门槛 | NOT_RUN | 本轮没有执行 Win+D、覆盖、任务栏/Alt+Tab 等人工组合；150% DPI 精确几何回归仍 FAIL |
 
 命令、版本、PID、清理结果与过程性失败见 `docs/PROGRESS.md` 阶段 4 及 `docs/reviews/stage4-capture-qa.md`。Daily Log、导出和发布产物验收未在本阶段执行。
+
+## 阶段 5 实际状态（2026-09-24）
+
+| ID / 门槛 | 状态 | 证据与剩余条件 |
+| --- | --- | --- |
+| A09 | PASS | 真实 Electron/SQLite E2E 对任务、笔记、日程分别验证回收站隐藏、当日/历史自动日志隐藏、恢复后按旧快照重建；普通回收站入口沿用阶段 3 |
+| A10 | PASS | 错误确认拒绝；正确永久删除后实际检查实体、操作快照、自动项及含正文旧回执，重启/新导出仍隐藏；不宣称取证级物理擦除 |
+| A17 | PASS | A 未完成、B 完成、C 首次或再次查看 A；A 仍待办，B 记录完成，C 编辑/改期/重开不回写 A/B |
+| A18 | PASS | 四类结构化自动区、计划标识、手写区独立 revision/幂等、重复生成稳定、今日更新和同时间戳 sequence 均经 SQLite 测试/Electron E2E；Library 视觉截图 NOT_RUN |
+| A19 | PASS | 固定 Clock 跨停机日期补生成，上海零点前后 UTC 归属、持久化应用时区与 DST 日界线数据测试；未修改系统时间或真实等待一天。真实睡眠/唤醒 OS 事件人工检查 NOT_RUN |
+| A20 | PASS | 同日完成后重开只进待办自动区，完成/重开操作历史保留；后日改标题/计划日不改旧日快照 |
+| A26 | NOT_RUN | 自动子项 PASS：最新 UTF-8 Markdown 文件、中文/代码块/手写区、隐藏项排除、取消不写、独立旧副本不变及界面提示。真实 Windows 保存对话框的人机操作与本轮 Library 视觉检查未执行，故整项不标 PASS |
+| A01-A05 桌面门槛 | NOT_RUN | 阶段 1 精确默认尺寸仍有历史 FAIL；Win+D、普通窗口覆盖、自由拖动缩放、多屏等未因阶段 5 业务测试而变成 PASS |
+
+具体命令、PID、环境和 QA 的测试边界见 `docs/PROGRESS.md` 阶段 5及 `docs/reviews/stage5-daily-log-qa.md`。发布产物内 SQLite、真实 Windows 保存对话框和完整桌面宿主仍待后续验收。

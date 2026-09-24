@@ -38,8 +38,8 @@ async function requireStage3Capabilities(runtime) {
   const snapshots = {}
   for (const [kind, page] of runtime.pages) {
     const snapshot = await bootstrap(page, kind)
-    assert.equal(snapshot.contractVersion, 3, `${kind} did not bootstrap contract v3`)
-    assert.equal(snapshot.stage, 4, `${kind} did not bootstrap stage 4`)
+    assert.equal(snapshot.contractVersion, 4, `${kind} did not bootstrap contract v4`)
+    assert.equal(snapshot.stage, 5, `${kind} did not bootstrap stage 5`)
     const missing = requiredCapabilities.filter((capability) => !snapshot.implementedCapabilities.includes(capability))
     assert.deepEqual(
       missing,
