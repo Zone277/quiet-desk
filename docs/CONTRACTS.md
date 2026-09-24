@@ -190,3 +190,13 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - 新增 `drafts.submit`、`shortcuts.get/update`、`links.openExternal`；既有 v2 方法保持窄化。
 - Lead 独占 `src/shared/**`、`src/preload/**`、`src/main/ipc/**`、依赖和主入口；Data 实现提交事务与快捷键设置持久化；Desktop 实现全局快捷键和 Capture 生命周期；UI 实现输入状态机与 Markdown；QA 最后独立审查异常路径。
 - 阶段 4 不实现托盘、Daily Log、导出、附件、远程图片代理、自然语言解析或提醒。真实中文 IME 候选确认必须单列人工证据；模拟 composition 事件只能证明代码分支，不能替代该验收。
+
+## 12. 阶段 5 IPC v4：Daily Log
+
+- `dailyLogs.get({date})` 返回结构化 `DailyLog`；按需生成所查看日期，空白日期不得在启动时批量造日志。`dailyLogs.saveManual({date,expectedRevision,manualMarkdown})` 要求幂等键，返回更新后的日志；`manualRevision` 从 0 开始且只随手写区成功写入递增，冲突不得覆盖。`dailyLogs.export({date})` 仅返回 `saved | cancelled`，由主进程重新读取最新日志并打开原生保存对话框；renderer 不传目标路径或待写正文。仅 Library 可调用这些方法。
+- 自动区保留四类结构化条目、来源实体 ID、来源操作 ID 和稳定顺序，不以拼接 Markdown 作为持久化真相。生成区和手写区分别持久化。当天可重算；历史日以该日 `[start,end)` 末的操作快照重建，排序时同 UTC 时间以全局 sequence 决胜，C 日编辑/改期/重开不得改写 A/B 日文字或状态。
+- 待办为日界线时存在、未删除、未完成且无计划日或计划日不晚于该日的任务；完成区为当日完成且日界线时仍完成的任务。同日完成再重开只进待办、不进自动完成区，操作历史仍完整。计划区显示该日重叠的定时/全天日程并明确标为计划；笔记区按创建操作的归属日收录，以当日日界线前最后版本展示。任务计划日期与截止日期不互相改写。
+- 日界线用日志首次生成时固定的应用 IANA 时区；操作原有的 `attributionDate` 不因以后改变进程或系统时区而重算。今日截止为注入 Clock 的当前时刻；未来日期不得用真实将来状态伪造已发生历史。跨日启动/唤醒/按日期查看时可补齐有活动或按需查看的日期；重复生成无变化时 ID、内容和时间戳稳定。
+- 当前在回收站的实体须从所有历史自动区和新导出隐藏；恢复后依未被改写的操作快照重建。永久删除在事务中清除实体正文、操作快照、关联自动条目及可能含正文的旧草稿/实体幂等回执；独立手写区不得按关键词清理。外部导出与备份是独立副本，后续删除不承诺修改它们，UI 必须明示。
+- Markdown 导出使用 UTF-8，内容来自本次最新结构化日志，包含未隐藏自动条目和手写区；取消对话框不得写文件。主进程只接受受限的日期参数和原生对话框所选路径，不向 renderer 暴露通用文件系统 API。
+- 所有权：Lead 管 `src/shared/**`、`src/preload/**`、`src/main/ipc/**`、主入口及文档；Data 管 `src/domain/**`、`src/main/data/**`、`src/main/services/**`、`tests/data/**`；UI 管 `src/renderer/**`；QA 管 `tests/e2e/**`、`tests/platform/**`、`docs/reviews/**`。接口改动由 Lead 先冻结。

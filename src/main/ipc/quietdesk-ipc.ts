@@ -1,4 +1,5 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { writeFile } from 'node:fs/promises'
 import type { ZodType } from 'zod'
 import { EntityNotFoundError, IdempotencyConflictError, StorageConflictError } from '../../domain/storage-errors'
 import type { Clock } from '../../shared/clock'
@@ -11,6 +12,9 @@ import {
   createTaskRequestSchema,
   entityMutationRequestSchema,
   getDayViewRequestSchema,
+  getDailyLogRequestSchema,
+  saveDailyLogManualRequestSchema,
+  exportDailyLogRequestSchema,
   getDraftRequestSchema,
   getEntityHistoryRequestSchema,
   getEntityRequestSchema,
@@ -50,6 +54,9 @@ const IMPLEMENTED_CAPABILITIES = [
   'app.bootstrap',
   'widget.getSnapshot',
   'library.getDay',
+  'dailyLogs.get',
+  'dailyLogs.saveManual',
+  'dailyLogs.export',
   'library.getEntity',
   'library.getHistory',
   'library.listTrash',
@@ -79,8 +86,6 @@ const IMPLEMENTED_CAPABILITIES = [
 ] as const
 
 const DEFERRED_CAPABILITIES = [
-  'Daily Log generation',
-  'Markdown export',
   'real Windows IME acceptance',
   'tray lifecycle'
 ] as const
@@ -89,6 +94,9 @@ const HANDLER_CHANNELS = [
   QUIETDESK_CHANNELS.bootstrap,
   QUIETDESK_CHANNELS.widgetSnapshot,
   QUIETDESK_CHANNELS.daySnapshot,
+  QUIETDESK_CHANNELS.dailyLog,
+  QUIETDESK_CHANNELS.saveDailyLogManual,
+  QUIETDESK_CHANNELS.exportDailyLog,
   QUIETDESK_CHANNELS.getEntity,
   QUIETDESK_CHANNELS.getHistory,
   QUIETDESK_CHANNELS.listTrash,
@@ -272,7 +280,7 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
             appTimeZone: options.appTimeZone,
             currentDate: dateInTimeZone(options.clock, options.appTimeZone),
             dataRevision: options.service.getDataRevision(),
-            stage: 4,
+            stage: 5,
             captureShortcut: shortcut,
             implementedCapabilities: [...IMPLEMENTED_CAPABILITIES],
             deferredCapabilities: [...DEFERRED_CAPABILITIES]
@@ -288,6 +296,58 @@ export function registerQuietDeskIpc(options: QuietDeskIpcOptions): () => void {
     () => options.service.getWidgetSnapshot())
   registerRead(QUIETDESK_CHANNELS.daySnapshot, 'day view', getDayViewRequestSchema,
     (request) => options.service.getDayView(request.payload.date))
+  ipcMain.handle(QUIETDESK_CHANNELS.dailyLog, async (event, raw: unknown) => {
+    const requestId = requestIdFrom(raw)
+    if (await authorize(event, options.windows) !== 'library') {
+      return failure(requestId, 'FORBIDDEN', 'Only Library may read Daily Logs')
+    }
+    const parsed = getDailyLogRequestSchema.safeParse(raw)
+    if (!parsed.success) return invalidRequest(requestId, 'Daily Log', parsed.error.issues)
+    try {
+      return { ok: true, requestId, value: options.service.getOrGenerateDailyLog(parsed.data.payload.date) }
+    } catch (error) {
+      return serviceFailure(requestId, 'read Daily Log', error)
+    }
+  })
+  ipcMain.handle(QUIETDESK_CHANNELS.saveDailyLogManual, async (event, raw: unknown) => {
+    const requestId = requestIdFrom(raw)
+    if (await authorize(event, options.windows) !== 'library') {
+      return failure(requestId, 'FORBIDDEN', 'Only Library may edit Daily Logs')
+    }
+    const parsed = saveDailyLogManualRequestSchema.safeParse(raw)
+    if (!parsed.success) return invalidRequest(requestId, 'Daily Log manual section', parsed.error.issues)
+    try {
+      const result = options.service.saveDailyLogManual(parsed.data)
+      if (!result.replayed) await broadcast(options.windows, result.change)
+      return { ok: true, requestId, value: result.value }
+    } catch (error) {
+      return serviceFailure(requestId, 'save Daily Log manual section', error)
+    }
+  })
+  ipcMain.handle(QUIETDESK_CHANNELS.exportDailyLog, async (event, raw: unknown) => {
+    const requestId = requestIdFrom(raw)
+    if (await authorize(event, options.windows) !== 'library') {
+      return failure(requestId, 'FORBIDDEN', 'Only Library may export Daily Logs')
+    }
+    const parsed = exportDailyLogRequestSchema.safeParse(raw)
+    if (!parsed.success) return invalidRequest(requestId, 'Daily Log export', parsed.error.issues)
+    try {
+      const windows = await options.windows
+      const selected = await dialog.showSaveDialog(windows.library, {
+        title: 'Export Daily Log / 导出每日日志',
+        defaultPath: `QuietDesk-${parsed.data.payload.date}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+      })
+      if (selected.canceled || !selected.filePath) {
+        return { ok: true, requestId, value: { status: 'cancelled' as const } }
+      }
+      const markdown = options.service.renderDailyLogMarkdown(parsed.data.payload.date)
+      await writeFile(selected.filePath, markdown, { encoding: 'utf8' })
+      return { ok: true, requestId, value: { status: 'saved' as const } }
+    } catch (error) {
+      return serviceFailure(requestId, 'export Daily Log', error)
+    }
+  })
   registerRead(QUIETDESK_CHANNELS.getEntity, 'entity query', getEntityRequestSchema,
     (request) => options.service.getEntity(request.payload), 'Entity does not exist')
   registerRead(QUIETDESK_CHANNELS.getHistory, 'entity history', getEntityHistoryRequestSchema,

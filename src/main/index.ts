@@ -1,4 +1,4 @@
-import { app, globalShortcut, nativeTheme, shell } from 'electron'
+import { app, globalShortcut, nativeTheme, powerMonitor, shell } from 'electron'
 import { isAbsolute, resolve } from 'node:path'
 import { FixedClock, SystemClock, type Clock } from '../shared/clock'
 import { defaultCaptureShortcut, type CreateNoteRequest } from '../shared/ipc-contract'
@@ -50,6 +50,9 @@ function detectLocale(): 'zh-CN' | 'en-US' {
 }
 
 function systemTimeZone(): string {
+  if (process.env.QUIETDESK_TEST_USER_DATA && process.env.QUIETDESK_TEST_TIME_ZONE) {
+    return process.env.QUIETDESK_TEST_TIME_ZONE
+  }
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
 
@@ -123,6 +126,14 @@ app.whenReady().then(async () => {
   const clock = applicationClock()
   storage = new CoreDataService({ databasePath, clock })
   const appTimeZone = storage.getOrCreateAppTimeZone(systemTimeZone())
+  storage.reconcileActiveDailyLogs()
+  powerMonitor.on('resume', () => {
+    try {
+      storage?.reconcileActiveDailyLogs()
+    } catch (error) {
+      console.error('QUIETDESK_DAILY_LOG_RESUME_ERROR', error)
+    }
+  })
   const preloadPath = resolve(__dirname, '../preload/index.js')
   const rendererDirectory = resolve(__dirname, '../renderer')
   const rendererUrl = process.env.ELECTRON_RENDERER_URL

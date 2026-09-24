@@ -21,6 +21,11 @@ const quietDeskApi: QuietDeskApi = {
     getHistory: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.getHistory, request),
     listTrash: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.listTrash, request)
   },
+  dailyLogs: {
+    get: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.dailyLog, request),
+    saveManual: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.saveDailyLogManual, request),
+    export: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.exportDailyLog, request)
+  },
   tasks: {
     create: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.createTask, request),
     update: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.updateTask, request),

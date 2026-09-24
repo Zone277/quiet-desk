@@ -3,6 +3,7 @@ import {
   captureDraftPayloadSchema,
   captureKindSchema,
   dateOnlySchema,
+  dailyLogSchema,
   draftSchema,
   entityIdSchema,
   entityRecordSchema,
@@ -17,6 +18,7 @@ import {
   trashEntrySchema,
   utcInstantSchema,
   type Draft,
+  type DailyLog,
   type EntityRecord,
   type Note,
   type OperationSnapshot,
@@ -104,7 +106,7 @@ export const bootstrapSnapshotSchema = z.object({
   appTimeZone: ianaTimeZoneSchema,
   currentDate: dateOnlySchema,
   dataRevision: z.number().int().nonnegative(),
-  stage: z.literal(4),
+  stage: z.literal(5),
   captureShortcut: captureShortcutStatusSchema,
   implementedCapabilities: z.array(z.string()),
   deferredCapabilities: z.array(z.string())
@@ -162,6 +164,15 @@ export const getDayViewRequestSchema = requestEnvelope(z.object({ date: dateOnly
 export const getEntityRequestSchema = requestEnvelope(entityReferenceSchema)
 export const getEntityHistoryRequestSchema = requestEnvelope(entityReferenceSchema)
 export const listTrashRequestSchema = requestEnvelope(z.object({}).strict())
+export const getDailyLogRequestSchema = requestEnvelope(z.object({ date: dateOnlySchema }).strict())
+export const saveDailyLogManualRequestSchema = mutationEnvelope(z.object({
+  date: dateOnlySchema,
+  expectedRevision: z.number().int().nonnegative(),
+  manualMarkdown: markdownSchema
+}).strict())
+export const exportDailyLogRequestSchema = requestEnvelope(z.object({ date: dateOnlySchema }).strict())
+export const exportDailyLogResultSchema = z.object({ status: z.enum(['saved', 'cancelled']) }).strict()
+export { dailyLogSchema }
 
 export const createTaskRequestSchema = mutationEnvelope(z.object({
   id: entityIdSchema,
@@ -432,6 +443,10 @@ export type GetDayViewRequest = z.infer<typeof getDayViewRequestSchema>
 export type GetEntityRequest = z.infer<typeof getEntityRequestSchema>
 export type GetEntityHistoryRequest = z.infer<typeof getEntityHistoryRequestSchema>
 export type ListTrashRequest = z.infer<typeof listTrashRequestSchema>
+export type GetDailyLogRequest = z.infer<typeof getDailyLogRequestSchema>
+export type SaveDailyLogManualRequest = z.infer<typeof saveDailyLogManualRequestSchema>
+export type ExportDailyLogRequest = z.infer<typeof exportDailyLogRequestSchema>
+export type ExportDailyLogResult = z.infer<typeof exportDailyLogResultSchema>
 export type BootstrapSnapshot = z.infer<typeof bootstrapSnapshotSchema>
 export type WidgetSnapshot = z.infer<typeof widgetSnapshotSchema>
 export type DayViewSnapshot = z.infer<typeof dayViewSnapshotSchema>
@@ -451,6 +466,11 @@ export interface QuietDeskApi {
     getEntity(request: GetEntityRequest): Promise<IpcResult<EntityRecord>>
     getHistory(request: GetEntityHistoryRequest): Promise<IpcResult<OperationSnapshot[]>>
     listTrash(request: ListTrashRequest): Promise<IpcResult<TrashEntry[]>>
+  }
+  dailyLogs: {
+    get(request: GetDailyLogRequest): Promise<IpcResult<DailyLog>>
+    saveManual(request: SaveDailyLogManualRequest): Promise<IpcResult<DailyLog>>
+    export(request: ExportDailyLogRequest): Promise<IpcResult<ExportDailyLogResult>>
   }
   tasks: {
     create(request: CreateTaskRequest): Promise<IpcResult<Task>>

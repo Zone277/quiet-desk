@@ -7,11 +7,16 @@ import {
 } from '../../domain/storage-errors'
 import {
   dateForInstantInTimeZone,
+  nextDate,
   utcDayBounds
 } from '../../domain/time-zone-day'
+import { dailyLogToMarkdown, formatDailyLogInstant } from '../../domain/daily-log-markdown'
 import { nowUtc, type Clock } from '../../shared/clock'
 import {
   draftSchema,
+  dailyLogSchema,
+  dailyLogItemSchema,
+  dateOnlySchema,
   entityIdSchema,
   entityRecordSchema,
   ianaTimeZoneSchema,
@@ -22,6 +27,8 @@ import {
   taskSchema,
   trashEntrySchema,
   type DateOnly,
+  type DailyLog,
+  type DailyLogItem,
   type Draft,
   type EntityRecord,
   type EntityType,
@@ -45,6 +52,7 @@ import {
   localeSchema,
   permanentlyDeleteEntityRequestSchema,
   rescheduleTaskRequestSchema,
+  saveDailyLogManualRequestSchema,
   saveDraftRequestSchema,
   setTaskCompletionRequestSchema,
   shortcutAcceleratorSchema,
@@ -65,6 +73,7 @@ import {
   type EntityMutationRequest,
   type PermanentlyDeleteEntityRequest,
   type RescheduleTaskRequest,
+  type SaveDailyLogManualRequest,
   type SaveDraftRequest,
   type SetTaskCompletionRequest,
   type SubmitDraftReceipt,
@@ -160,6 +169,28 @@ interface HistoryRow {
   attribution_time_zone: string
   entity_revision: number | bigint
   snapshot_json: string
+}
+
+interface DailyLogRow {
+  id: string
+  log_date: string
+  attribution_time_zone: string
+  generated_at_utc: string
+  generation_version: number | bigint
+  manual_markdown: string
+  manual_revision: number | bigint
+  created_at_utc: string
+  updated_at_utc: string
+}
+
+interface DailyLogItemRow {
+  id: string
+  section: DailyLogItem['section']
+  source_entity_type: EntityType
+  source_entity_id: string
+  source_operation_id: string | null
+  stable_order: number | bigint
+  snapshot_markdown: string
 }
 
 export interface MutationResult<T> {
@@ -674,6 +705,106 @@ export class CoreDataService {
     )
   }
 
+  getOrGenerateDailyLog(date: DateOnly): DailyLog {
+    const validatedDate = dateOnlySchema.parse(date)
+    this.currentTimeZone()
+    return this.database.transaction(() => this.generateDailyLog(validatedDate))
+  }
+
+  saveDailyLogManual(request: SaveDailyLogManualRequest): MutationResult<DailyLog> {
+    const validated = saveDailyLogManualRequestSchema.parse(request)
+    this.currentTimeZone()
+    const operation = 'daily-logs.save-manual.v4'
+    const commandFingerprint = fingerprint(operation, validated.payload)
+    return this.database.transaction(() => {
+      const replay = this.readReceipt(
+        validated.idempotencyKey,
+        operation,
+        commandFingerprint,
+        (value) => dailyLogSchema.parse(value)
+      )
+      if (replay) {
+        return {
+          ...replay,
+          value: {
+            ...replay.value,
+            autoItems: replay.value.autoItems.filter((item) =>
+              this.getEntity({ type: item.sourceEntityType, id: item.sourceEntityId })
+                ?.value.deletedAtUtc === null
+            )
+          }
+        }
+      }
+
+      const current = this.generateDailyLog(validated.payload.date)
+      if (current.manualRevision !== validated.payload.expectedRevision) {
+        throw new StorageConflictError('revision-mismatch', 'Daily Log manual revision does not match')
+      }
+      const occurredAtUtc = nowUtc(this.clock)
+      this.database.connection.prepare(`
+        UPDATE daily_logs
+        SET manual_markdown = ?, manual_revision = ?, updated_at_utc = ?
+        WHERE log_date = ?
+      `).run(
+        validated.payload.manualMarkdown,
+        current.manualRevision + 1,
+        occurredAtUtc,
+        current.logDate
+      )
+      const value = this.readDailyLog(current.logDate)!
+      const change = this.insertChange(
+        occurredAtUtc,
+        ['daily-logs'],
+        [{ type: 'daily-log', id: value.id }]
+      )
+      this.writeReceipt({
+        idempotencyKey: validated.idempotencyKey,
+        operation,
+        commandFingerprint,
+        subjectType: 'daily-log',
+        subjectId: value.id,
+        value,
+        change,
+        occurredAtUtc
+      })
+      return { value, change, replayed: false }
+    })
+  }
+
+  renderDailyLogMarkdown(date: DateOnly): string {
+    return dailyLogToMarkdown(this.getOrGenerateDailyLog(date))
+  }
+
+  reconcileActiveDailyLogs(): number {
+    const timeZone = this.currentTimeZone()
+    const today = dateForInstantInTimeZone(this.clock.now(), timeZone)
+    const previous = this.readSetting('daily-log.last-reconciled-date')
+    const firstHistory = this.database.connection.prepare(`
+      SELECT MIN(date_value) AS first_date FROM (
+        SELECT attribution_date AS date_value FROM operation_history
+        UNION ALL SELECT log_date AS date_value FROM daily_logs
+      )
+    `).get() as { first_date: string | null }
+    let date = dateOnlySchema.parse(previous ?? firstHistory.first_date ?? today)
+    let retained = 0
+    while (date <= today) {
+      const target = date
+      this.database.transaction(() => {
+        const existed = this.readDailyLog(target) !== undefined
+        const log = this.generateDailyLog(target)
+        if (!existed && log.autoItems.length === 0 && log.manualMarkdown === '') {
+          this.database.connection.prepare('DELETE FROM daily_logs WHERE log_date = ?').run(target)
+        } else {
+          retained += 1
+        }
+        this.writeSetting('daily-log.last-reconciled-date', target, nowUtc(this.clock))
+      })
+      if (date === today) break
+      date = nextDate(date)
+    }
+    return retained
+  }
+
   getDraft(id: string): Draft | undefined {
     const validatedId = entityIdSchema.parse(id)
     const row = this.database.connection.prepare(`
@@ -830,6 +961,42 @@ export class CoreDataService {
         [this.topicForEntity(validated.payload.entity.type)],
         [validated.payload.entity]
       )
+
+      this.removeGeneratedItemsForEntity(validated.payload.entity, occurredAtUtc)
+      this.redactDailyLogReceiptsForEntity(validated.payload.entity, occurredAtUtc)
+
+      const submitReceipts = this.database.connection.prepare(`
+        SELECT change_sequence, result_change_json FROM idempotency_receipts
+        WHERE subject_type = ? AND subject_id = ? AND operation = 'drafts.submit.v3'
+      `).all(validated.payload.entity.type, validated.payload.entity.id) as Array<{
+        change_sequence: number | bigint
+        result_change_json: string
+      }>
+      for (const receipt of submitReceipts) {
+        const submittedChange = changeEventSchema.parse(JSON.parse(receipt.result_change_json) as unknown)
+        for (const reference of submittedChange.entityRefs) {
+          if (reference.type !== 'draft') continue
+          const priorSubmissions = this.database.connection.prepare(`
+            SELECT result_change_json FROM idempotency_receipts
+            WHERE operation = 'drafts.submit.v3' AND change_sequence < ?
+            ORDER BY change_sequence DESC
+          `).all(receipt.change_sequence) as Array<{ result_change_json: string }>
+          let lowerBound = 0
+          for (const prior of priorSubmissions) {
+            const priorChange = changeEventSchema.parse(JSON.parse(prior.result_change_json) as unknown)
+            if (priorChange.entityRefs.some((item) => item.type === 'draft' && item.id === reference.id)) {
+              lowerBound = priorChange.sequence
+              break
+            }
+          }
+          this.database.connection.prepare(`
+            UPDATE idempotency_receipts
+            SET result_json = NULL, redacted_at_utc = ?
+            WHERE subject_type = 'draft' AND subject_id = ?
+              AND change_sequence > ? AND change_sequence <= ?
+          `).run(occurredAtUtc, reference.id, lowerBound, receipt.change_sequence)
+        }
+      }
 
       this.database.connection.prepare(`
         DELETE FROM operation_history
@@ -1121,6 +1288,7 @@ export class CoreDataService {
       },
       afterChange: (entity, change, occurredAtUtc) => {
         this.recordHistory(entity, historyOperation, change, occurredAtUtc, timeZone)
+        if (deleted) this.removeGeneratedItemsForEntity(validated.payload.entity, occurredAtUtc)
       }
     })
   }
@@ -1499,6 +1667,237 @@ export class CoreDataService {
         ? schedule.endAtUtc > bounds.endAtUtc
         : schedule.endDateExclusive > bounds.nextDate
     }))
+  }
+
+  private readDailyLog(date: DateOnly): DailyLog | undefined {
+    const row = this.database.connection.prepare(`
+      SELECT * FROM daily_logs WHERE log_date = ?
+    `).get(date) as unknown as DailyLogRow | undefined
+    if (!row) return undefined
+    const items = this.database.connection.prepare(`
+      SELECT * FROM daily_log_items WHERE log_date = ?
+      ORDER BY CASE section
+        WHEN 'completed' THEN 0 WHEN 'pending-at-boundary' THEN 1
+        WHEN 'planned' THEN 2 ELSE 3 END, stable_order, source_entity_id
+    `).all(date) as unknown as DailyLogItemRow[]
+    return dailyLogSchema.parse({
+      id: row.id,
+      logDate: row.log_date,
+      attributionTimeZone: row.attribution_time_zone,
+      generatedAtUtc: row.generated_at_utc,
+      generationVersion: integer(row.generation_version, 'Daily Log generation version'),
+      autoItems: items.map((item) => dailyLogItemSchema.parse({
+        id: item.id,
+        section: item.section,
+        sourceEntityType: item.source_entity_type,
+        sourceEntityId: item.source_entity_id,
+        sourceOperationId: item.source_operation_id,
+        stableOrder: integer(item.stable_order, 'Daily Log item order'),
+        snapshotMarkdown: item.snapshot_markdown
+      })),
+      manualMarkdown: row.manual_markdown,
+      manualRevision: integer(row.manual_revision, 'Daily Log manual revision'),
+      createdAtUtc: row.created_at_utc,
+      updatedAtUtc: row.updated_at_utc
+    })
+  }
+
+  private removeGeneratedItemsForEntity(reference: EntityReference, occurredAtUtc: string): void {
+    const dates = this.database.connection.prepare(`
+      SELECT DISTINCT log_date FROM daily_log_items
+      WHERE source_entity_type = ? AND source_entity_id = ?
+    `).all(reference.type, reference.id) as Array<{ log_date: string }>
+    this.database.connection.prepare(`
+      DELETE FROM daily_log_items
+      WHERE source_entity_type = ? AND source_entity_id = ?
+    `).run(reference.type, reference.id)
+    const update = this.database.connection.prepare(`
+      UPDATE daily_logs SET generated_at_utc = ?, updated_at_utc = ? WHERE log_date = ?
+    `)
+    for (const row of dates) update.run(occurredAtUtc, occurredAtUtc, row.log_date)
+  }
+
+  private redactDailyLogReceiptsForEntity(reference: EntityReference, occurredAtUtc: string): void {
+    const receipts = this.database.connection.prepare(`
+      SELECT idempotency_key, result_json FROM idempotency_receipts
+      WHERE subject_type = 'daily-log' AND result_json IS NOT NULL
+    `).all() as Array<{ idempotency_key: string; result_json: string }>
+    const redact = this.database.connection.prepare(`
+      UPDATE idempotency_receipts
+      SET result_json = NULL, redacted_at_utc = ? WHERE idempotency_key = ?
+    `)
+    for (const receipt of receipts) {
+      const log = dailyLogSchema.parse(JSON.parse(receipt.result_json) as unknown)
+      if (log.autoItems.some((item) =>
+        item.sourceEntityType === reference.type && item.sourceEntityId === reference.id
+      )) {
+        redact.run(occurredAtUtc, receipt.idempotency_key)
+      }
+    }
+  }
+
+  private generateDailyLog(date: DateOnly): DailyLog {
+    const occurredAtUtc = nowUtc(this.clock)
+    const existing = this.readDailyLog(date)
+    const timeZone = existing?.attributionTimeZone ?? this.currentTimeZone()
+    const today = dateForInstantInTimeZone(occurredAtUtc, timeZone)
+    const bounds = utcDayBounds(date, timeZone)
+    const historical = date < today
+    const cutoff = historical ? bounds.endAtUtc : occurredAtUtc
+    const operator = historical ? '<' : '<='
+
+    const latestRows = this.database.connection.prepare(`
+      WITH ranked AS (
+        SELECT history.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY entity_type, entity_id
+            ORDER BY occurred_at_utc DESC, sequence DESC
+          ) AS row_number
+        FROM operation_history history
+        WHERE occurred_at_utc ${operator} ?
+      )
+      SELECT * FROM ranked WHERE row_number = 1
+      ORDER BY sequence, entity_type, entity_id
+    `).all(cutoff) as unknown as HistoryRow[]
+    const originRows = this.database.connection.prepare(`
+      SELECT entity_type, entity_id, operation, operation_id, attribution_date, sequence
+      FROM operation_history
+      WHERE occurred_at_utc ${operator} ?
+        AND operation IN ('note.created', 'task.completed')
+      ORDER BY occurred_at_utc, sequence
+    `).all(cutoff) as Array<{
+      entity_type: EntityType
+      entity_id: string
+      operation: OperationKind
+      operation_id: string
+      attribution_date: string
+      sequence: number | bigint
+    }>
+    const noteOrigins = new Map<string, typeof originRows[number]>()
+    const completions = new Map<string, typeof originRows[number]>()
+    for (const row of originRows) {
+      if (row.operation === 'note.created') noteOrigins.set(row.entity_id, row)
+      if (row.operation === 'task.completed') completions.set(row.entity_id, row)
+    }
+
+    const active = new Set<string>()
+    for (const type of ['task', 'note', 'schedule'] as const) {
+      const table = type === 'task' ? 'tasks' : type === 'note' ? 'notes' : 'schedules'
+      const rows = this.database.connection.prepare(`
+        SELECT id FROM ${table} WHERE deleted_at_utc IS NULL
+      `).all() as Array<{ id: string }>
+      for (const row of rows) active.add(`${type}:${row.id}`)
+    }
+
+    type DesiredItem = Omit<DailyLogItem, 'id'>
+    const desired: DesiredItem[] = []
+    const safeTitle = (title: string): string => title.replace(/([\\`*_{}\[\]()#+.!>|-])/gu, '\\$1')
+    const push = (
+      section: DailyLogItem['section'], row: HistoryRow,
+      markdown: string, sourceOperationId: string | null = row.operation_id
+    ): void => {
+      desired.push({
+        section,
+        sourceEntityType: row.entity_type,
+        sourceEntityId: row.entity_id,
+        sourceOperationId,
+        stableOrder: integer(row.sequence, 'history sequence'),
+        snapshotMarkdown: markdown
+      })
+    }
+
+    for (const row of latestRows) {
+      if (!active.has(`${row.entity_type}:${row.entity_id}`)) continue
+      const snapshot = operationSnapshotSchema.parse({
+        operationId: row.operation_id,
+        sequence: integer(row.sequence, 'history sequence'),
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        operation: row.operation,
+        occurredAtUtc: row.occurred_at_utc,
+        attributionDate: row.attribution_date,
+        attributionTimeZone: row.attribution_time_zone,
+        entityRevision: integer(row.entity_revision, 'history entity revision'),
+        snapshot: JSON.parse(row.snapshot_json) as unknown
+      })
+      const entity = snapshot.snapshot
+      if (entity.value.deletedAtUtc !== null) continue
+
+      if (entity.type === 'task' && !(!historical && date > today)) {
+        const task = entity.value
+        if (task.completedAtUtc === null && (task.planDate === null || task.planDate <= date)) {
+          push('pending-at-boundary', row, `- [ ] ${safeTitle(task.title)}`)
+        } else if (task.completedAtUtc !== null) {
+          const completion = completions.get(task.id)
+          if (completion?.attribution_date === date) {
+            push('completed', row, `- [x] ${safeTitle(task.title)}`, completion.operation_id)
+          }
+        }
+      } else if (entity.type === 'schedule') {
+        const schedule = entity.value
+        const overlaps = schedule.kind === 'timed'
+          ? schedule.startAtUtc < bounds.endAtUtc && schedule.endAtUtc > bounds.startAtUtc
+          : schedule.startDate <= date && schedule.endDateExclusive > date
+        if (overlaps) {
+          const when = schedule.kind === 'timed'
+            ? `${formatDailyLogInstant(schedule.startAtUtc, timeZone)} — ${formatDailyLogInstant(schedule.endAtUtc, timeZone)}`
+            : `${schedule.startDate} — ${schedule.endDateExclusive}（结束日不含）`
+          push('planned', row, `- 计划：${safeTitle(schedule.title)}（${when}）`)
+        }
+      } else if (entity.type === 'note' && !(!historical && date > today)) {
+        if (noteOrigins.get(entity.value.id)?.attribution_date === date) {
+          const title = entity.value.title ? `### ${safeTitle(entity.value.title)}\n\n` : ''
+          const withTitle = `${title}${entity.value.bodyMarkdown}`
+          push('notes', row, withTitle.length <= 1_000_000 ? withTitle : entity.value.bodyMarkdown)
+        }
+      }
+    }
+
+    const sectionRank: Record<DailyLogItem['section'], number> = {
+      completed: 0, 'pending-at-boundary': 1, planned: 2, notes: 3
+    }
+    desired.sort((left, right) =>
+      sectionRank[left.section] - sectionRank[right.section] ||
+      left.stableOrder - right.stableOrder ||
+      left.sourceEntityId.localeCompare(right.sourceEntityId)
+    )
+
+    if (!existing) {
+      this.database.connection.prepare(`
+        INSERT INTO daily_logs (
+          id, log_date, attribution_time_zone, generated_at_utc, generation_version,
+          manual_markdown, manual_revision, created_at_utc, updated_at_utc
+        ) VALUES (?, ?, ?, ?, 1, '', 0, ?, ?)
+      `).run(randomUUID(), date, timeZone, occurredAtUtc, occurredAtUtc, occurredAtUtc)
+    }
+    const oldItems = new Map((existing?.autoItems ?? []).map((item) => [
+      `${item.section}:${item.sourceEntityType}:${item.sourceEntityId}`, item
+    ]))
+    const nextItems = desired.map((item) => {
+      const key = `${item.section}:${item.sourceEntityType}:${item.sourceEntityId}`
+      return dailyLogItemSchema.parse({ ...item, id: oldItems.get(key)?.id ?? randomUUID() })
+    })
+    if (!existing || JSON.stringify(existing.autoItems) !== JSON.stringify(nextItems)) {
+      this.database.connection.prepare('DELETE FROM daily_log_items WHERE log_date = ?').run(date)
+      const insert = this.database.connection.prepare(`
+        INSERT INTO daily_log_items (
+          id, log_date, section, source_entity_type, source_entity_id,
+          source_operation_id, stable_order, snapshot_markdown
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const item of nextItems) {
+        insert.run(
+          item.id, date, item.section, item.sourceEntityType, item.sourceEntityId,
+          item.sourceOperationId, item.stableOrder, item.snapshotMarkdown
+        )
+      }
+      if (existing) {
+        this.database.connection.prepare(`
+          UPDATE daily_logs SET generated_at_utc = ?, updated_at_utc = ? WHERE log_date = ?
+        `).run(occurredAtUtc, occurredAtUtc, date)
+      }
+    }
+    return this.readDailyLog(date)!
   }
 
   private currentTimeZone(): string {

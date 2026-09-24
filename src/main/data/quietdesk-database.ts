@@ -186,6 +186,36 @@ const MIGRATIONS = [
       ON operation_history(attribution_date, sequence);
     CREATE INDEX idx_receipts_subject
       ON idempotency_receipts(subject_type, subject_id);
+  `,
+  `
+    CREATE TABLE daily_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      log_date TEXT NOT NULL UNIQUE,
+      attribution_time_zone TEXT NOT NULL,
+      generated_at_utc TEXT NOT NULL,
+      generation_version INTEGER NOT NULL CHECK (generation_version >= 1),
+      manual_markdown TEXT NOT NULL DEFAULT '' CHECK (length(manual_markdown) <= 1000000),
+      manual_revision INTEGER NOT NULL DEFAULT 0 CHECK (manual_revision >= 0),
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    ) STRICT;
+
+    CREATE TABLE daily_log_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      log_date TEXT NOT NULL REFERENCES daily_logs(log_date) ON DELETE CASCADE,
+      section TEXT NOT NULL CHECK (section IN ('completed', 'pending-at-boundary', 'planned', 'notes')),
+      source_entity_type TEXT NOT NULL CHECK (source_entity_type IN ('task', 'note', 'schedule')),
+      source_entity_id TEXT NOT NULL,
+      source_operation_id TEXT,
+      stable_order INTEGER NOT NULL CHECK (stable_order >= 0),
+      snapshot_markdown TEXT NOT NULL CHECK (length(snapshot_markdown) <= 1000000),
+      UNIQUE(log_date, section, source_entity_type, source_entity_id)
+    ) STRICT;
+
+    CREATE INDEX idx_daily_log_items_source
+      ON daily_log_items(source_entity_type, source_entity_id);
+    CREATE INDEX idx_history_cutoff
+      ON operation_history(occurred_at_utc, sequence);
   `
 ] as const
 

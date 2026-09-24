@@ -11,6 +11,9 @@ import {
 import {
   bootstrapRequestSchema,
   createNoteRequestSchema,
+  getDailyLogRequestSchema,
+  saveDailyLogManualRequestSchema,
+  exportDailyLogRequestSchema,
   externalUrlSchema,
   permanentlyDeleteEntityRequestSchema,
   saveDraftRequestSchema,
@@ -22,7 +25,7 @@ import {
 const id = '01234567-89ab-4def-8abc-0123456789ab'
 const instant = '2026-09-21T08:15:30.000Z'
 
-describe('v3 shared contract', () => {
+describe('v4 shared contract', () => {
   test('keeps UTC instants and date-only values distinct', () => {
     expect(utcInstantSchema.safeParse(instant).success).toBe(true)
     expect(utcInstantSchema.safeParse('2026-09-21').success).toBe(false)
@@ -169,5 +172,23 @@ describe('v3 shared contract', () => {
     expect(nowUtc(clock)).toBe('2026-09-21T16:30:00.000Z')
     expect(dateInTimeZone(clock, 'Asia/Shanghai')).toBe('2026-09-22')
     expect(dateInTimeZone(clock, 'UTC')).toBe('2026-09-21')
+  })
+
+  test('narrows Daily Log reads, versioned manual writes and exports to date-only', () => {
+    const envelope = { requestId: id, payload: { date: '2026-09-21' } }
+    expect(getDailyLogRequestSchema.safeParse(envelope).success).toBe(true)
+    expect(exportDailyLogRequestSchema.safeParse(envelope).success).toBe(true)
+    expect(exportDailyLogRequestSchema.safeParse({
+      ...envelope, payload: { ...envelope.payload, path: 'C:\\private\\foo.md' }
+    }).success).toBe(false)
+    expect(saveDailyLogManualRequestSchema.safeParse({
+      ...envelope,
+      idempotencyKey: '11234567-89ab-4def-8abc-0123456789ab',
+      payload: { date: '2026-09-21', expectedRevision: 0, manualMarkdown: '中文 **note**' }
+    }).success).toBe(true)
+    expect(saveDailyLogManualRequestSchema.safeParse({
+      ...envelope,
+      payload: { date: '2026-09-21', expectedRevision: 0, manualMarkdown: '' }
+    }).success).toBe(false)
   })
 })

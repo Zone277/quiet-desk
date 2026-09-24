@@ -166,6 +166,7 @@ export const dailyLogSchema = z.object({
   generationVersion: z.number().int().positive(),
   autoItems: z.array(dailyLogItemSchema),
   manualMarkdown: markdownSchema,
+  manualRevision: z.number().int().nonnegative(),
   createdAtUtc: utcInstantSchema,
   updatedAtUtc: utcInstantSchema
 }).strict()

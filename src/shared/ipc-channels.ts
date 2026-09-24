@@ -1,9 +1,12 @@
-export const IPC_CONTRACT_VERSION = 3 as const
+export const IPC_CONTRACT_VERSION = 4 as const
 
 export const QUIETDESK_CHANNELS = {
   bootstrap: 'quietdesk:v2:bootstrap',
   widgetSnapshot: 'quietdesk:v2:widget:snapshot',
   daySnapshot: 'quietdesk:v2:library:day',
+  dailyLog: 'quietdesk:v4:daily-logs:get',
+  saveDailyLogManual: 'quietdesk:v4:daily-logs:save-manual',
+  exportDailyLog: 'quietdesk:v4:daily-logs:export',
   getEntity: 'quietdesk:v2:entities:get',
   getHistory: 'quietdesk:v2:entities:history',
   listTrash: 'quietdesk:v2:entities:trash-list',

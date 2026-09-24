@@ -509,7 +509,7 @@ describe('CoreDataService stage 3', () => {
     const migrated = new DatabaseSync(path)
     try {
       expect((migrated.prepare('PRAGMA user_version').get() as { user_version: number }).user_version)
-        .toBe(2)
+        .toBe(3)
     } finally {
       migrated.close()
     }
