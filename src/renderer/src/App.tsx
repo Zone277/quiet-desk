@@ -35,7 +35,7 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         return
       }
       if (result.value.windowKind !== windowKind) {
-        setState({ phase: 'error', message: 'Bootstrap returned the wrong window identity.' })
+        setState({ phase: 'error', message: copyFor(result.value.locale).wrongWindow })
         return
       }
       setState({ phase: 'ready', snapshot: result.value })
@@ -78,13 +78,14 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
   }
 
   if (state.phase === 'error') {
+    const errorCopy = copyFor((document.documentElement.dataset.themePreference ? document.documentElement.lang : navigator.language).toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US')
     return (
       <main className="app-shell centered-shell" data-window-kind={windowKind} data-testid="window-root">
         <section className="error-state no-drag" data-testid="bootstrap-state" data-state="error" aria-live="polite">
           <p className="eyebrow">QuietDesk</p>
-          <h1 data-testid="window-title">Startup error</h1>
+          <h1 data-testid="window-title">{errorCopy.startupError}</h1>
           <p data-testid="global-error">{state.message}</p>
-          <button type="button" onClick={() => void refreshBootstrap()}>Retry</button>
+          <button type="button" onClick={() => void refreshBootstrap()}>{errorCopy.retry}</button>
         </section>
       </main>
     )
@@ -104,9 +105,9 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         <div className="brand-block">
           <p className="eyebrow">{copy.appName}</p>
           <h1 data-testid="window-title">{title}</h1>
+          {windowKind === 'widget' ? <HostBadge copy={copy} /> : null}
         </div>
         <div className="header-tools no-drag">
-          {windowKind === 'widget' ? <HostBadge copy={copy} /> : null}
           <AppearanceControls bootstrap={bootstrap} copy={copy} onUpdated={refreshBootstrap} />
         </div>
       </header>
@@ -120,11 +121,14 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         {windowKind === 'widget' && bootstrap.captureShortcut.failure !== null
           ? (
               <p className="inline-error shortcut-message" data-testid="shortcut-conflict" role="alert">
+                <span className="shortcut-brief">{copy.shortcutNotRegistered} · {copy.openCapture}</span>
+                <span className="shortcut-detail">
                 {bootstrap.captureShortcut.failure === 'conflict'
                   ? copy.shortcutConflict
                   : bootstrap.captureShortcut.failure === 'invalid'
                     ? copy.shortcutInvalid
                     : copy.shortcutUnavailable}
+                </span>
               </p>
             )
           : null}

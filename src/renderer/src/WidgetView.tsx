@@ -52,6 +52,15 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
   const [actionError, setActionError] = useState<string>()
   const generation = useRef(0)
   const active = useRef(true)
+  const [itemLimit, setItemLimit] = useState(window.innerHeight <= 500 ? 1 : 3)
+
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      setItemLimit(window.innerHeight <= 500 ? 1 : 3)
+    })
+    observer.observe(document.documentElement)
+    return () => observer.disconnect()
+  }, [])
 
   const refresh = useCallback(async (clearTaskPending = false): Promise<void> => {
     const currentGeneration = ++generation.current
@@ -147,6 +156,10 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
   }
 
   const snapshot = state.value
+  const currentTasks = snapshot.currentTasks.slice(0, itemLimit)
+  const schedules = snapshot.todaySchedules.slice(0, itemLimit)
+  const notes = snapshot.recentNotes.slice(0, itemLimit)
+  const completed = snapshot.completedToday.slice(0, itemLimit)
 
   return (
     <div className="widget-layout">
@@ -163,6 +176,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
         <button
           type="button"
           className="button-secondary compact-button"
+          title={copy.openLibrary}
           data-testid="open-library"
           onClick={() => void showWindow('library', selectedDate)}
         >
@@ -171,6 +185,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
         <button
           type="button"
           className="button-accent compact-button capture-button"
+          title={copy.openCapture}
           data-testid="open-capture"
           onClick={() => void showWindow('capture')}
         >
@@ -190,7 +205,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
             ? <p className="empty-state">{copy.noTasks}</p>
             : (
               <ul className="item-list" data-testid="current-task-list">
-                {snapshot.currentTasks.map(({ task, isOverdue }) => (
+                {currentTasks.map(({ task, isOverdue }) => (
                   <li className="item-row task-row" data-testid="current-task-item" data-entity-id={task.id} key={task.id}>
                     <button
                       type="button"
@@ -210,7 +225,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
                 ))}
               </ul>
             )}
-          <MoreCount total={snapshot.totals.currentTasks} shown={snapshot.currentTasks.length} copy={copy} />
+          <MoreCount total={snapshot.totals.currentTasks} shown={currentTasks.length} copy={copy} />
         </section>
 
         <section className="section-card schedule-section" aria-labelledby="today-schedule-heading">
@@ -222,7 +237,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
             ? <p className="empty-state">{copy.noSchedules}</p>
             : (
               <ul className="item-list" data-testid="today-schedule-list">
-                {snapshot.todaySchedules.map(({ schedule, continuesBefore, continuesAfter }) => (
+                {schedules.map(({ schedule, continuesBefore, continuesAfter }) => (
                   <li className="item-row schedule-row" data-testid="today-schedule-item" data-entity-id={schedule.id} key={schedule.id}>
                     <span className="schedule-marker" aria-hidden="true" />
                     <div className="item-copy">
@@ -237,7 +252,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
                 ))}
               </ul>
             )}
-          <MoreCount total={snapshot.totals.todaySchedules} shown={snapshot.todaySchedules.length} copy={copy} />
+          <MoreCount total={snapshot.totals.todaySchedules} shown={schedules.length} copy={copy} />
         </section>
 
         <section className="section-card notes-section" aria-labelledby="recent-notes-heading">
@@ -249,7 +264,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
             ? <p className="empty-state">{copy.noNotes}</p>
             : (
               <ul className="item-list" data-testid="recent-note-list">
-                {snapshot.recentNotes.map(({ note, plainTextPreview }) => (
+                {notes.map(({ note, plainTextPreview }) => (
                   <li className="item-row note-row" data-testid="recent-note-item" data-entity-id={note.id} key={note.id}>
                     <div className="item-copy">
                       <strong>{note.title || plainTextPreview || copy.note}</strong>
@@ -260,7 +275,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
                 ))}
               </ul>
             )}
-          <MoreCount total={snapshot.totals.recentNotes} shown={snapshot.recentNotes.length} copy={copy} />
+          <MoreCount total={snapshot.totals.recentNotes} shown={notes.length} copy={copy} />
         </section>
 
         <details className="section-card completed-section" data-testid="completed-today-toggle">
@@ -272,7 +287,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
             ? <p className="empty-state">{copy.noCompleted}</p>
             : (
               <ul className="item-list completed-list" data-testid="completed-today-list">
-                {snapshot.completedToday.map((task) => (
+                {completed.map((task) => (
                   <li className="item-row completed-row" data-entity-id={task.id} key={task.id}>
                     <div className="item-copy">
                       <strong>{task.title}</strong>
@@ -292,7 +307,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
                 ))}
               </ul>
             )}
-          <MoreCount total={snapshot.totals.completedToday} shown={snapshot.completedToday.length} copy={copy} />
+          <MoreCount total={snapshot.totals.completedToday} shown={completed.length} copy={copy} />
         </details>
       </div>
     </div>

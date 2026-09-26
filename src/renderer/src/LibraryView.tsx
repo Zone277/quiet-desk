@@ -72,10 +72,10 @@ function EntityBody({ record, bootstrap, copy }: {
   return (
     <div className="entity-detail-content">
       <div className="detail-heading">
-        <span className="entity-type-chip">{record.type}</span>
+        <span className="entity-type-chip">{record.type === 'task' ? copy.task : record.type === 'note' ? copy.note : copy.schedule}</span>
         <span>{copy.revision(entity.revision)}</span>
       </div>
-      <h3>{entityTitle(record)}</h3>
+      <h3>{entityTitle(record, copy.untitled)}</h3>
       {record.type === 'task' ? (
         <div className="item-meta detail-meta">
           {record.value.planDate ? <span>{copy.planned} · {formatDateOnly(record.value.planDate, bootstrap.locale)}</span> : null}
@@ -304,7 +304,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
         {mode === 'day' ? (
           <div className="date-browser">
             <button type="button" className="icon-button" data-testid="library-prev-date" aria-label={copy.previousDate} onClick={() => setSelectedDate(nextDate(selectedDate, -1))}>‹</button>
-            <input data-testid="library-date" type="date" value={selectedDate} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value) }} />
+            <input data-testid="library-date" aria-label={copy.browseDate} type="date" value={selectedDate} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value) }} />
             <button type="button" className="icon-button" data-testid="library-next-date" aria-label={copy.nextDate} onClick={() => setSelectedDate(nextDate(selectedDate, 1))}>›</button>
             <button type="button" className="text-button" data-testid="library-today" onClick={() => setSelectedDate(bootstrap.currentDate)}>{copy.today}</button>
           </div>
@@ -425,7 +425,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
                 <li className="trash-row" key={`${entry.entity.type}:${entry.entity.value.id}`}>
                   <div className="item-copy">
                     <span className="entity-type-chip">{entry.entity.type}</span>
-                    <strong>{entityTitle(entry.entity)}</strong>
+                    <strong>{entityTitle(entry.entity, copy.untitled)}</strong>
                     <time>{formatInstant(entry.deletedAtUtc, bootstrap.locale, bootstrap.appTimeZone)}</time>
                   </div>
                   <div className="button-row">
@@ -448,7 +448,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
           <section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="permanent-delete-title">
             <p className="eyebrow">{confirmDelete.entity.type}</p>
             <h2 id="permanent-delete-title">{copy.confirmPermanentDelete}</h2>
-            <strong>{entityTitle(confirmDelete.entity)}</strong>
+            <strong>{entityTitle(confirmDelete.entity, copy.untitled)}</strong>
             <p>{copy.permanentDeleteHint}</p>
             <div className="button-row">
               <button type="button" className="button-secondary" onClick={() => setConfirmDelete(undefined)}>{copy.cancel}</button>

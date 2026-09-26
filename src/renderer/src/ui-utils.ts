@@ -45,8 +45,8 @@ export function formatSchedule(schedule: Schedule, locale: Locale, timeZone: str
   return `${formatter.format(new Date(schedule.startAtUtc))} – ${formatter.format(new Date(schedule.endAtUtc))}`
 }
 
-export function entityTitle(record: EntityRecord): string {
-  return record.value.title.trim() || record.value.bodyMarkdown.trim().split(/\r?\n/u)[0]?.slice(0, 80) || 'Untitled'
+export function entityTitle(record: EntityRecord, fallback: string): string {
+  return record.value.title.trim() || record.value.bodyMarkdown.trim().split(/\r?\n/u)[0]?.slice(0, 80) || fallback
 }
 
 export function entityRevision(record: EntityRecord): number {

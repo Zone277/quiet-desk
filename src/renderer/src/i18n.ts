@@ -7,6 +7,10 @@ export interface Copy {
   library: string
   today: string
   loading: string
+  startupError: string
+  wrongWindow: string
+  untitled: string
+  schedule: string
   retry: string
   save: string
   saving: string
@@ -124,6 +128,10 @@ const ZH: Copy = {
   library: '资料库',
   today: '今天',
   loading: '正在读取本地数据…',
+  startupError: '启动失败',
+  wrongWindow: '启动信息与当前窗口不匹配。',
+  untitled: '无标题',
+  schedule: '日程',
   retry: '重试',
   save: '保存草稿',
   saving: '保存中…',
@@ -241,6 +249,10 @@ const EN: Copy = {
   library: 'Library',
   today: 'Today',
   loading: 'Reading local data…',
+  startupError: 'Startup error',
+  wrongWindow: 'Startup information does not match this window.',
+  untitled: 'Untitled',
+  schedule: 'Schedule',
   retry: 'Retry',
   save: 'Save draft',
   saving: 'Saving…',
@@ -265,7 +277,7 @@ const EN: Copy = {
   noNotes: 'No recent notes yet',
   noCompleted: 'Nothing completed today',
   more: (count) => `${count} more`,
-  overdue: 'Due',
+  overdue: 'Overdue',
   planned: 'Planned',
   due: 'Due',
   completed: 'Completed',
