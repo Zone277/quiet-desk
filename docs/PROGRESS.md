@@ -1,24 +1,72 @@
 # QuietDesk 进度
 
-更新日期：2026-09-23（Asia/Shanghai）
+更新日期：2026-09-26（Asia/Shanghai）
 
 ## 当前结论
 
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | 阶段 0：环境与规格启动 | PASS | 需求、架构、验收路由、分工和实际环境已落盘；Git 仓库已初始化 |
-| 阶段 1：Windows 桌面宿主 spike | FAIL | 可运行 Electron、WorkerW attach/inspect 和明确 fallback 已实现；150% DPI 精确默认几何失败，关键 Windows GUI 情境仍未执行 |
+| 阶段 1：Windows 桌面宿主 spike | NOT_RUN | 阶段 6 已修复当前 150% 外框几何、发布 helper；Win+D/覆盖/拖动等完整桌面情境仍未执行，旧 FAIL 作为历史保留 |
 | 阶段 2：脚手架、契约与存储 | PASS | 三窗口安全壳、IPC v1、真实 Electron SQLite 关闭重开与 Windows portable 构建已有证据 |
 | 阶段 3：核心数据与 Widget | PASS | IPC v2、事务化 Task/Note/Schedule/Draft、真实 Widget/Capture/Library、业务 E2E 和 24 张逐图视觉检查完成 |
-| 阶段 4：快捷捕获与 Markdown | PASS | IPC v3、全局快捷键生命周期、事务化草稿提交、安全 Markdown、失败重试与跨窗口 Electron E2E 已完成；真实 Windows IME/系统快捷键人工项另列 NOT_RUN |
-| Windows 桌面宿主验收 | NOT_RUN | 原生父子关系子项 PASS；Win+D、覆盖、任务栏/Alt+Tab、连续拖动/缩放和恢复组合没有完整证据 |
-| Electron 构建 | PASS | Electron 44.4.3、Node 24.21.0、electron-vite 5.0.0；阶段 4 `check`、`build`、integration 与捕获 E2E 均退出 0 |
-| SQLite / Windows 打包 | NOT_RUN | 开发 Electron 内 SQLite 3.53.4 读写/进程重启为 PASS，阶段 2 portable 构建为 PASS；发布产物内部读写仍未执行，完整项保持 NOT_RUN |
-| 产品验收 A01-A28 | NOT_RUN | A07、A08、A11、A12、A13、A15、A21 已有 PASS；其余含局部证据或留待后续阶段，且 A01-A05 桌面门槛仍未完成 |
+| 阶段 4：快捷捕获与 Markdown | PASS | IPC v3、快捷键生命周期、事务草稿、安全 Markdown、失败重试与跨窗口 E2E；阶段 6 当前真实 IME 子项 PASS，其他输入法/系统组合另列 NOT_RUN |
+| 阶段 5：Daily Log / 删除传播 | PASS | IPC v4、历史快照、跨日补齐、结构化自动区/独立手写区和 UTF-8 导出；阶段 6 真实 Electron 回归通过 |
+| 阶段 6：集成验证与 Windows 交付 | PASS | 本轮可执行修复、五项必跑命令、真实发布/portable SQLite 重启迁移与交付文档完成；交付为开发预览，不是完整桌面签核 |
+| Windows 桌面宿主验收 | BLOCKED | 原生父子关系/当前几何子项 PASS；缺 Win+D、覆盖、任务栏/Alt+Tab、连续鼠标拖动/缩放等完整证据 |
+| Electron 构建 | PASS | 当前 Electron 44.4.3、Node 24.21.0、SQLite 3.53.4；最终五项命令全部退出 0 |
+| SQLite / Windows 打包 | PASS | 最终 portable 与 unpacked 静态资源/helper/内置 SQLite 实际启动；中文空格路径、两次进程、真实 schema v3→v4 迁移 |
+| 产品验收 A01-A28 | NOT_RUN | 业务及安全回归通过；当前输入法和真实保存对话框有原生 PASS。未测系统组合/完整桌面门槛仍不算通过 |
 
-当前是连接真实 SQLite 的阶段 4 业务开发预览，不是已完成桌面小组件。核心数据、三窗口 UI、快捷捕获与安全 Markdown 可运行，但 150% DPI 几何偏差和未完成的桌面宿主 GUI 验收继续阻塞最终桌面组件结论。
+当前交付：**开发预览，桌面验收未完成**。阶段 6 核心业务、安全、捕获、Daily Log、真实 Windows 发布 SQLite 与迁移已通过；当前 150% 外框几何修复，不将其提升为所有 DPI/显示器或完整桌面行为支持。
 
-## 本阶段完成项
+## 阶段 6：真实分工、集成与证据
+
+基线 `7170e1d`，开始时工作树干净。实际使用 Codex multi_agent_v1，不创建模拟角色或用普通 task 代替 agent；最多同时三个，共享 workspace 明确所有权，仅 Lead 操作 Git。Desktop/UI/QA 并行，QA 完成关闭后交 Data 修复数据缺陷；Data 追加边界迁移由 Lead 明确批准公共约束。
+
+| Owner / 真实 agent | 路径与实际交付 |
+| --- | --- |
+| Desktop / Pasteur `01a0dc16-7bb1-7e71-9a5c-cf9917826d08` | main/windows、main/platform、native、局部平台测试；替换 Python 运行依赖、DPI 补偿、恢复/退出串行化；真实 attach/inspect 和两 PID 非预设几何 |
+| UI / Sartre `01a0dc16-7e25-7173-9c44-8ff33763650e` | renderer；窄尺寸标题/计数/host badge、清单复选框、语言错误提示；96 张逐图基线＋36 张逐图定向复核 |
+| QA / Heisenberg `01a0dc16-7cd6-7383-8e08-636d7e78656d` | tests/e2e、tests/platform、docs/reviews；独立 A01–A28 审查、监听/生命周期/IPC 负向脚本与托盘模板测试。新增 Electron 脚本由 Lead 执行与修正真实探针 |
+| Data / Mencius `01a0dc23-9bce-7be2-8e3b-783a0d1f7e35` | domain、main/data/services、tests/data；中立计划元数据/本地化导出、极限正文派生边界与追加 schema v4；45/45 真实 SQLite 局部测试 |
+| Lead / Integrator | 依赖构建、shared、主入口/托盘/IPC与集成；真实命令、打包、发布隔离目录/迁移/性能、原生 IME 和保存对话框检查，文档、提交/推送 |
+
+本轮没有新增业务功能或依赖；package/lock 依赖版本保持原锁定，仅增加 native 构建钩子、发布资源和测试入口。正式启动不注入 demo，renderer 不访问 Node/SQL/shell；发布忽略 dev server、禁用故障/固定 Clock/存储 smoke。正式默认 `%APPDATA%/quiet-desk/data/quietdesk.sqlite3`（当前包 app.getName=quiet-desk），preview/demo/test 分开，本轮未打开正式库或改登录配置。
+
+### 真实命令结果
+
+环境：Windows 11 Pro x64 Build 22631 / Node 22.13.1 / npm 10.9.2；发布 Electron 44.4.3 / Node 24.21.0 / SQLite 3.53.4。最终 `node scripts/stage6-verify.mjs` 在本日 13:26:07–13:29:29 执行并退出 0：`npm run check`（11 契约＋tsc）、`test:integration`、`test:e2e`（阶段 2–6）、`build`、`dist:win` 全为 PASS，逐项退出 0。环境/时间/完整日志：`test-results/stage6/commands/results.json` 及同目录对应日志。
+
+Lead 复核 `npx vitest run tests/data tests/platform`：69/69、退出 0；renderer Vitest：4/4、退出 0；release-audit node:test：4/4、退出 0；发布 `test:release -- "…/应用 含空格/QuietDesk.exe"`：19 个拒绝情境 PASS、退出 0。发布 smoke/portable smoke 均退出 0，详情 [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)。
+
+发布证据 `test-results/stage6/发布 验证/report.json`：两个 PID、真实发布 v3→v4 迁移（关联/手写区保留）、file 三入口、helper WorkerW挂接、中文笔记重启、完整性/FK检查、网络请求拒绝；包含三张发布截图，Lead 已实际打开。`便携 启动/report.json`：从含中文空格 portable 文件真实两次启动，helper和笔记恢复。无 dev server；仅应用网络阻断，**整机断网 NOT_RUN**。
+
+### 原生交互与视觉
+
+原生 GUI 用 computer-use 技能的 sky/SendInput，未绕过 Windows 键禁令。当前系统真实中文候选栏中输入 n/i、Space 选“你”，Enter 换行；候选激活时 Ctrl+Enter 不提交，Return 确认后输入混排并非组合 Ctrl+Enter 保存收起，Library/Widget 更新且重启后正文 `你\nn English / 中文` 保留。原生交互子项 PASS，不是模拟 composition；供应商/版本、其他 IME NOT_RUN。
+
+真实 Windows 保存对话框指定独立中文文件名，看到“导出已保存”，UTF-8 218 字节读回 PASS；未 mock dialog。证据目录 `test-results/stage6/原生 交互 1790400950483/` 包含 `evidence.json`（真实 composition事件）、`evidence-restart.json`、`中文 导出.md` 与截图，瞬态候选栏和保存窗口在本任务工具截图记录中。没有把生成截图等同于检查；UI 36 张定向及 Lead 3 张发布+2样本实际检查 PASS。system 在本机=light，OS主题切换 NOT_RUN。
+
+### 失败与修复（保留原证据）
+
+- 初轮 E2E FAIL：未登记探针无法取得真实 preload、退出后访问已销毁 dispatcher；Lead 修复测试脚本，真实同 file URL 的未登记 sandbox窗口仍必须 FORBIDDEN，最终完整 E2E PASS。首轮日志保留 `commands-first-run/`。
+- UI 基线 9 图 FAIL：英文最小标题和 GFM checkbox；修复后 36 图定向实际复核 PASS。旧 FAIL 与 inspection.json 不覆盖。
+- 极限笔记 1m正文＋500转义标题原来省略日志标题；Lead 只扩派生上限为1,002,000，Data追加迁移v4，完整1,001,006字符/重启/删除链路 PASS，原始输入限额不变。
+- portable 的 Playwright主进程握手超时退出1；改为普通启动器＋仅测试loopback CDP，两次实跑退出0。不是桌面门槛 PASS。
+- 原生会话收尾隐藏窗口截图超时退出1，原生操作已观察且日志保存；修正为仅截图可见窗口，同隔离库重启会话退出0。原始事件不丢弃，未把失败命令写成通过。
+
+### 交付与尚未验收
+
+`release/QuietDesk 0.1.0.exe`，101,356,478 字节、NotSigned；SHA-256 `6C6565AE77C22C2DEA77D5B18B1E4B65EFBEC944ABD785337C99C8C39242F141`。README 含安装/启动/构建、真实数据路径、关闭与退出、托盘设置/默认不注册登录项、副本边界、模式和已知问题。
+
+固定 Ryzen 7 7735H / 16线程 / 15.24GiB / 150%单屏，三窗口显式显示：三窗口就绪1597/1326ms；6 Electron进程工作集合计642.20–650.17MiB，Electron CPU求和0.0097–0.0692%；OS差分CPU0–0.589%（100%=1核）。包含共享页重复、短命helper漏采样等边界，不虚构峰值/性能阈值。10秒健康检查不会重入，退出移除timer/listeners、等待写入、关闭SQLite；100次订阅取消/3次reload回归 PASS，长期soak/输入压力性能/泄漏检测 NOT_RUN。
+
+完整桌面签核 **BLOCKED**：Win+D、覆盖/返回、不抢焦点/任务栏/Alt+Tab、连续鼠标拖动/缩放未验证；100%/200%/多屏、Explorer重启/睡眠、OS断网、托盘真实点击、登录配置操作 NOT_RUN。当前宿主实际 attached 不替代这些情境；下一步入口是 [DESKTOP-SPIKE.md](DESKTOP-SPIKE.md) 与发布清单的人工步骤，须在授权测试环境补齐。停止在阶段6，不扩展新功能。
+
+本轮 Git 增量已推送：`450fbdc` 桌面/托盘/生命周期，`fdfbcd5` UI修复及视觉报告，`78eddda` 日志文本/边界迁移；最后交付文档/验证脚本单独提交。截图、日志、数据库、native/bin和release不提交。所有子agent已回收；未终止用户无关进程或清理真实数据。
+
+## 阶段 0 历史完成项
 
 - 完整阅读 `AGENTS.md`、`prompts/00-bootstrap.md`、`docs/PRODUCT.md`、`docs/ACCEPTANCE.md`、`docs/SOURCES.md`、README 与阶段 1-7 提示词。
 - 确认目录原先不是 Git 仓库；执行 `git init -b main .`，创建无提交的 `main` 分支。未创建提交、未修改 Git 全局配置。

@@ -137,3 +137,40 @@
 | A01-A05 桌面门槛 | NOT_RUN | 阶段 1 精确默认尺寸仍有历史 FAIL；Win+D、普通窗口覆盖、自由拖动缩放、多屏等未因阶段 5 业务测试而变成 PASS |
 
 具体命令、PID、环境和 QA 的测试边界见 `docs/PROGRESS.md` 阶段 5及 `docs/reviews/stage5-daily-log-qa.md`。发布产物内 SQLite、真实 Windows 保存对话框和完整桌面宿主仍待后续验收。
+
+## 阶段 6 最终复核（2026-09-26）
+
+此表覆盖本轮最终源码与 Windows x64 发布包；上面的阶段记录保留历史，不代表当前结论。完整情境含未执行项时保持 NOT_RUN，已执行子项在说明中明确 PASS。详见 [发布清单](RELEASE-CHECKLIST.md)、[进度](PROGRESS.md)、[桌面诊断](DESKTOP-SPIKE.md)。原生交互是 agent 通过 Windows 原生输入实际操作/观察，不是用户亲自手测；未替换 IME 或保存对话框。
+
+| ID | 状态 | 真实证据与范围 |
+| --- | --- | --- |
+| A01 | NOT_RUN | 发布真实 WorkerW/helper挂接自动 PASS，但 Win+D/覆盖/返回桌面没有验证；最终桌面结论 BLOCKED |
+| A02 | NOT_RUN | style/showInactive/受限聚焦实现与局部测试，真实任务栏/Alt+Tab及被动更新焦点未完整测 |
+| A03 | NOT_RUN | 自动/视觉子项 PASS：150% 外框480×420、非预设437×386恢复、Widget320核心入口/计数；content478宽如实记录。真实连续鼠标拖动/缩放/命中 NOT_RUN |
+| A04 | NOT_RUN | 只测单屏150%；100%/200%、跨屏/移除屏幕没有实测 |
+| A05 | NOT_RUN | 有清理/恢复/健康检查单元证据，未授权 Explorer 重启/睡眠，不进行破坏性实机操作 |
+| A06 | NOT_RUN | 中英文、三主题、四尺寸及日志四区已逐图检查定向 PASS（原基线9FAIL已修）；system=light。真实OS主题运行切换、完整键盘/a11y与减少动画组合 NOT_RUN |
+| A07 | PASS | 自动：最终 stage3-business＋DataSQLite，昨日待办仍可见，计划/截止不改期，未来资格正确 |
+| A08 | PASS | 自动：完成/持久历史/重开，第二进程恢复；最终 lifecycle Widget/Library DOM刷新 |
+| A09 | PASS | 自动：任务/笔记/日程回收站、历史隐藏、恢复，真实SQLite与阶段5Electron回归 |
+| A10 | PASS | 自动：确认后永久删除、实体正文/快照/关联自动区与回执清理，重启/导出排除，手写保留 |
+| A11 | PASS | 自动：类型/源码预览/Enter/CtrlEnter规则、清单与日期文字不自动转实体。原生：当前实际中文候选栏及composition事件，候选中CtrlEnter不提交、Return确认不提交；多行混排非组合CtrlEnter落盘收起。不承诺其他IME版本 |
+| A12 | PASS | 自动：Esc/失焦/重启草稿、乱序与快速重复、受控一次性提交失败后重试。发布原生输入成功后重启正文恢复；真实OS磁盘故障/锁库注入仍 NOT_RUN，不能把受控故障当作该子项通过 |
+| A13 | PASS | 自动：去抖、串行revision与冲突、旧请求拒绝、保存状态与重启恢复 |
+| A14 | PASS | 自动：3窗口同sequence、真实DOM刷新、100次订阅取消/上下文取消、10次激活与3次reload；原生输入后Library/Widget即时显示笔记 |
+| A15 | PASS | 自动：真实SQLite/最终Electron跨午夜两日与多日全天，结束边界排除 |
+| A16 | PASS | 自动：真实日期浏览/未来与过往日程仍计划，未自动标参加 |
+| A17 | PASS | 自动：A待办/B完成/C首次历史与后日编辑，固定Clock＋真实SQLite和Electron重启 |
+| A18 | PASS | 自动：四区、幂等、手写独立revision、稳定sequence；UI逐图24个四区视口PASS，未把屏外全部内容算视觉已查 |
+| A19 | PASS | 自动：停机跨日补齐、时区/DST/历史归属固定；不改系统时间。真实睡眠resume属A05 NOT_RUN |
+| A20 | PASS | 自动：同日完成重开只进待办，后日修改不改历史；阶段6中立元数据重建保留ID与源操作 |
+| A21 | PASS | 自动：真实Markdown恶意HTML/危险协议/远程图片拒绝；真实发布IPC协议拒绝；GFM checkbox尺寸修复已实际看图 |
+| A22 | PASS | 自动：contextIsolation/sandbox/noNode、跨窗口身份、路径/SQL extra拒绝，真实未登记同file URL sandbox窗FORBIDDEN；发布19个负向情境 |
+| A23 | PASS | 自动：普通隔离空库无demo、实际发布重启/v3→v4保留日志/手写关联，integrity/FK正确；Data迁移边界45/45 |
+| A24 | PASS | 自动：Electron44内置原生SQLite3.53.4，真实unpacked和portable helper/静态资源/读写/再启动，中文空格路径 |
+| A25 | NOT_RUN | 自动冲突/配置/close-hide/app.quit/shortcut释放PASS，托盘模板7/7；实际通知区鼠标菜单/退出尚未操作，登录配置未改 |
+| A26 | PASS | 自动UTF-8中文/代码/手写/删除排除与取消检查；原生真实保存对话框＋中文文件名/混排218字节实际读回，副本界面说明实际观察 |
+| A27 | NOT_RUN | 发布file资源、无dev server、网络拒绝/中文空格路径/独立data自动PASS；整机物理断网未执行，不提升该完整情境 |
+| A28 | NOT_RUN | 发布6进程合计工作集642.20–650.17MiB、闲置CPU及1597/1326ms就绪已测；输入/大量条目的性能与长期soak未测。方法、helper漏采样/共享页边界已记录 |
+
+目前没有未修复的已确认业务缺陷；尚未完整测的情境不是 PASS。构建及业务可交付开发预览，完整桌面验收仍 BLOCKED，Windows/DPI/多屏未测组合不宣称支持。
