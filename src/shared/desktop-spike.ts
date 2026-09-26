@@ -18,7 +18,7 @@ export interface DisplaySnapshot {
 }
 
 export interface NativeHostSnapshot {
-  bridge: 'python-ctypes' | 'none'
+  bridge: 'python-ctypes' | 'win32-helper' | 'none'
   operation: 'attach' | 'inspect' | 'fallback'
   success: boolean
   route?: string

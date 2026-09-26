@@ -6,6 +6,9 @@
   "description": "Local-first Windows desktop widget",
   "main": "./out/main/index.js",
   "scripts": {
+    "build:native": "powershell -NoProfile -File native/build-helper.ps1",
+    "predev": "npm run build:native",
+    "prebuild": "npm run build:native",
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "check": "npm run check:types && npm run test:contracts",
@@ -13,7 +16,8 @@
     "test": "vitest run",
     "test:contracts": "vitest run tests/contracts",
     "test:integration": "npm run build && node tests/integration/electron-storage-smoke.mjs",
-    "test:e2e": "npm run build && node tests/e2e/windows-shells.mjs && node tests/e2e/stage3-business.mjs && node tests/e2e/stage4-capture.mjs && node tests/e2e/stage5-daily-log.mjs",
+    "test:e2e": "npm run build && node tests/e2e/windows-shells.mjs && node tests/e2e/stage3-business.mjs && node tests/e2e/stage4-capture.mjs && node tests/e2e/stage5-daily-log.mjs && node tests/e2e/stage6-lifecycle.mjs",
+    "test:release": "node tests/e2e/stage6-release.mjs",
     "test:visual": "npm run build && node tests/e2e/stage3-visual.mjs",
     "test:platform": "npm run build && vitest run tests/platform",
     "build": "electron-vite build",
@@ -60,10 +64,10 @@
     ],
     "extraResources": [
       {
-        "from": "native",
+        "from": "native/bin",
         "to": "native",
         "filter": [
-          "windows_desktop_host.py"
+          "windows_desktop_host.exe"
         ]
       }
     ],

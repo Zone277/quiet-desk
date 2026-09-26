@@ -86,8 +86,7 @@ const IMPLEMENTED_CAPABILITIES = [
 ] as const
 
 const DEFERRED_CAPABILITIES = [
-  'real Windows IME acceptance',
-  'tray lifecycle'
+  'unverified Windows/DPI/display combinations'
 ] as const
 
 const HANDLER_CHANNELS = [

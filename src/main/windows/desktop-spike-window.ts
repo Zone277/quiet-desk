@@ -1,4 +1,4 @@
-import { BrowserWindow, screen, type Display, type Rectangle } from 'electron'
+import { BrowserWindow, powerMonitor, screen, type Display, type Rectangle } from 'electron'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { release } from 'node:os'
@@ -155,7 +155,7 @@ async function persistWindowState(statePath: string, state: StoredWindowState): 
   await rename(temporaryPath, statePath)
 }
 
-class DesktopSpikeWindowController implements DesktopSpikeController {
+export class DesktopSpikeWindowController implements DesktopSpikeController {
   readonly window: BrowserWindow
 
   private nativeSnapshot: NativeHostSnapshot = {
@@ -170,31 +170,44 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
   private saveTimer: ReturnType<typeof setTimeout> | undefined
   private healthTimer: ReturnType<typeof setInterval> | undefined
   private retryPromise: Promise<DesktopHostStatus> | undefined
+  private healthPromise: Promise<void> | undefined
+  private savePromise: Promise<void> = Promise.resolve()
+  private disposePromise: Promise<void> | undefined
   private disposed = false
+
+  private readonly onResume = (): void => {
+    if (!this.disposed && !this.window.isDestroyed()) {
+      void this.retryHost('resume').catch((error: unknown) => console.warn('QUIETDESK_HOST_RESUME_ERROR', error))
+    }
+  }
 
   private readonly handle: string
   private readonly onMoveOrResize = (): void => this.scheduleStateSave()
   private readonly onDisplayTopologyChange = (): void => {
+    if (this.disposed || this.window.isDestroyed()) return
     this.ensureWindowIsVisible()
     this.scheduleStateSave()
-    void this.retryHost('display-topology-change')
+    void this.retryHost('display-topology-change').catch((error: unknown) => console.warn('QUIETDESK_HOST_DISPLAY_ERROR', error))
   }
   private readonly onDisplayMetricsChanged = (
     _event: Electron.Event,
     _display: Display,
     changedMetrics: string[]
   ): void => {
+    if (this.disposed || this.window.isDestroyed()) return
     if (changedMetrics.some((metric) => metric === 'bounds' || metric === 'workArea' || metric === 'scaleFactor')) {
       this.ensureWindowIsVisible()
       this.scheduleStateSave()
       void this.retryHost(`display-metrics:${changedMetrics.join(',')}`)
+        .catch((error: unknown) => console.warn('QUIETDESK_HOST_DISPLAY_ERROR', error))
     }
   }
 
   constructor(
     window: BrowserWindow,
     private readonly adapter: DesktopHostAdapter,
-    private readonly statePath: string
+    private readonly statePath: string,
+    private readonly initialSize: { width: number; height: number } = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT }
   ) {
     this.window = window
     this.handle = readNativeHandle(window)
@@ -204,16 +217,24 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
     screen.on('display-added', this.onDisplayTopologyChange)
     screen.on('display-removed', this.onDisplayTopologyChange)
     screen.on('display-metrics-changed', this.onDisplayMetricsChanged)
+    powerMonitor.on('resume', this.onResume)
   }
 
   async initialize(): Promise<void> {
+    const desired = { ...this.window.getBounds(), ...this.initialSize }
+    await this.restoreExactBounds(desired)
     await this.retryHost('startup')
     this.window.showInactive()
+    await this.restoreExactBounds(desired)
+    await this.saveStateNow()
     this.emitStatus()
 
-    if (this.adapter.kind === 'windows-python-ctypes') {
+    if (this.adapter.kind !== 'fallback') {
       this.healthTimer = setInterval(() => {
-        void this.checkHostHealth()
+        if (this.healthPromise || this.retryPromise || this.disposed) return
+        this.healthPromise = this.checkHostHealth()
+          .catch((error: unknown) => console.warn('QUIETDESK_HOST_HEALTH_ERROR', error))
+          .finally(() => { this.healthPromise = undefined })
       }, HOST_HEALTH_INTERVAL_MS)
     }
   }
@@ -256,6 +277,9 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
   }
 
   async retryHost(trigger: string): Promise<DesktopHostStatus> {
+    if (this.disposed || this.window.isDestroyed()) {
+      throw new Error('Desktop controller is disposed or its window is destroyed')
+    }
     if (this.retryPromise) {
       return await this.retryPromise
     }
@@ -268,11 +292,15 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
     }
   }
 
-  async dispose(): Promise<void> {
-    if (this.disposed) {
-      return
-    }
+  dispose(): Promise<void> {
+    if (this.disposePromise) return this.disposePromise
     this.disposed = true
+
+    this.disposePromise = this.finishDispose()
+    return this.disposePromise
+  }
+
+  private async finishDispose(): Promise<void> {
 
     if (this.saveTimer) {
       clearTimeout(this.saveTimer)
@@ -286,6 +314,13 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
     screen.off('display-added', this.onDisplayTopologyChange)
     screen.off('display-removed', this.onDisplayTopologyChange)
     screen.off('display-metrics-changed', this.onDisplayMetricsChanged)
+    powerMonitor.off('resume', this.onResume)
+    this.window.off('move', this.onMoveOrResize)
+    this.window.off('resize', this.onMoveOrResize)
+
+    // Drain attach/inspect before detach so a late helper cannot reparent during quit.
+    await this.retryPromise?.catch(() => undefined)
+    await this.healthPromise?.catch(() => undefined)
 
     if (!this.window.isDestroyed()) {
       await this.saveStateNow()
@@ -294,6 +329,7 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
   }
 
   private async performHostRetry(trigger: string): Promise<DesktopHostStatus> {
+    const desiredBounds = this.window.getBounds()
     this.recoveryAttempts += 1
     this.lastRecoveryTrigger = trigger
 
@@ -302,6 +338,16 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
     } catch (error) {
       this.nativeSnapshot = fallbackNativeSnapshot(error)
     }
+
+    if (this.disposed || this.window.isDestroyed()) {
+      // dispose drains this operation before detaching; do not touch a dead HWND.
+      throw new Error('Desktop recovery interrupted by disposal')
+    }
+
+    // FRAMECHANGED and SetParent can change Chromium's outer-frame accounting.
+    // Keep the actual DIP outer bounds, including non-preset restored sizes.
+    await this.restoreExactBounds(desiredBounds)
+    if (this.disposed || this.window.isDestroyed()) throw new Error('Desktop recovery interrupted by disposal')
 
     this.lastRecoveryResult = this.nativeSnapshot.success ? 'attached' : 'fallback'
     this.emitStatus()
@@ -315,12 +361,14 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
 
     try {
       const inspection = await this.adapter.inspect(this.handle)
+      if (this.disposed || this.window.isDestroyed()) return
       if (inspection.success) {
         this.nativeSnapshot = inspection
         return
       }
       this.nativeSnapshot = inspection
     } catch (error) {
+      if (this.disposed || this.window.isDestroyed()) return
       this.nativeSnapshot = fallbackNativeSnapshot(error)
     }
 
@@ -329,7 +377,7 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
   }
 
   private ensureWindowIsVisible(): void {
-    if (this.window.isDestroyed()) {
+    if (this.disposed || this.window.isDestroyed()) {
       return
     }
     const current = this.window.getBounds()
@@ -369,14 +417,55 @@ class DesktopSpikeWindowController implements DesktopSpikeController {
       scaleFactor: display.scaleFactor
     }
 
-    try {
-      await persistWindowState(this.statePath, state)
-    } catch (error) {
-      console.warn('QUIETDESK_WINDOW_STATE_WRITE_ERROR', error)
+    // Serialize atomic replacements: an older debounced write cannot win over quit.
+    this.savePromise = this.savePromise.then(async () => {
+      try {
+        await persistWindowState(this.statePath, state)
+      } catch (error) {
+        console.warn('QUIETDESK_WINDOW_STATE_WRITE_ERROR', error)
+      }
+    })
+    await this.savePromise
+  }
+
+  private async restoreExactBounds(desired: Rectangle): Promise<void> {
+    let requested = { ...desired }
+    let canAdjust = this.adapter.adjustSize !== undefined
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (this.disposed || this.window.isDestroyed()) return
+      this.window.setBounds(requested, false)
+      await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0))
+      if (this.disposed || this.window.isDestroyed()) return
+      const actual = this.window.getBounds()
+      if (actual.x === desired.x && actual.y === desired.y &&
+          actual.width === desired.width && actual.height === desired.height) return
+      if (canAdjust && this.adapter.adjustSize) {
+        const scale = screen.getDisplayMatching(actual).scaleFactor
+        try {
+          await this.adapter.adjustSize(this.handle,
+            Math.round((desired.width - actual.width) * scale),
+            Math.round((desired.height - actual.height) * scale))
+        } catch (error) {
+          canAdjust = false
+          console.warn('QUIETDESK_WINDOW_GEOMETRY_HELPER_ERROR', error)
+        }
+        if (this.disposed || this.window.isDestroyed()) return
+        const corrected = this.window.getBounds()
+        if (corrected.x === desired.x && corrected.y === desired.y &&
+            corrected.width === desired.width && corrected.height === desired.height) return
+      }
+      requested = {
+        x: requested.x + desired.x - actual.x,
+        y: requested.y + desired.y - actual.y,
+        width: requested.width + desired.width - actual.width,
+        height: requested.height + desired.height - actual.height
+      }
     }
+    console.warn('QUIETDESK_WINDOW_GEOMETRY_MISMATCH', { desired, actual: this.window.getBounds() })
   }
 
   private emitStatus(): void {
+    if (this.disposed || this.window.isDestroyed()) return
     console.info(`QUIETDESK_DESKTOP_STATUS ${JSON.stringify(this.getStatus())}`)
   }
 }
@@ -428,10 +517,18 @@ export async function createDesktopSpikeWindow(
   }
   await readyToShow
 
+  // Electron's constructor can add DPI-dependent non-client insets. Apply the
+  // intended outer size after renderer readiness, before the native attach reads it.
+  window.setBounds({ ...window.getBounds(),
+    width: initialBounds?.width ?? DEFAULT_WIDTH,
+    height: initialBounds?.height ?? DEFAULT_HEIGHT
+  }, false)
+
   const controller = new DesktopSpikeWindowController(
     window,
     createDesktopHostAdapter({ forceFallback: options.forceFallback }),
-    options.statePath
+    options.statePath,
+    { width: initialBounds?.width ?? DEFAULT_WIDTH, height: initialBounds?.height ?? DEFAULT_HEIGHT }
   )
   await controller.initialize()
   return controller

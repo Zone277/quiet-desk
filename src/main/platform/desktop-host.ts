@@ -7,7 +7,7 @@ import type { NativeHostSnapshot } from '../../shared/desktop-spike'
 const BRIDGE_TIMEOUT_MS = 5_000
 const MAX_BRIDGE_OUTPUT_BYTES = 64 * 1024
 
-type BridgeAction = 'attach' | 'inspect' | 'detach'
+type BridgeAction = 'attach' | 'inspect' | 'detach' | 'resize'
 
 interface BridgeResult {
   action: BridgeAction
@@ -23,10 +23,11 @@ interface BridgeResult {
 }
 
 export interface DesktopHostAdapter {
-  readonly kind: 'windows-python-ctypes' | 'fallback'
+  readonly kind: 'windows-win32-helper' | 'fallback'
   attach(nativeHandle: string): Promise<NativeHostSnapshot>
   inspect(nativeHandle: string): Promise<NativeHostSnapshot>
   detach(nativeHandle: string): Promise<void>
+  adjustSize?(nativeHandle: string, widthDeltaPx: number, heightDeltaPx: number): Promise<void>
 }
 
 export interface DesktopHostAdapterOptions {
@@ -80,7 +81,7 @@ function parseBridgeResult(stdout: string, expectedAction: BridgeAction): Bridge
 
 function toSnapshot(result: BridgeResult): NativeHostSnapshot {
   return {
-    bridge: 'python-ctypes',
+    bridge: 'win32-helper',
     operation: result.action === 'inspect' ? 'inspect' : 'attach',
     success: result.success,
     route: result.route,
@@ -101,16 +102,13 @@ function validateNativeHandle(nativeHandle: string): void {
 }
 
 function findBridgeScript(explicitPath?: string): string | undefined {
-  if (explicitPath && existsSync(explicitPath)) {
+  if (!app.isPackaged && explicitPath && existsSync(explicitPath)) {
     return explicitPath
   }
 
-  const candidates = [
-    resolve(process.resourcesPath, 'native', 'windows_desktop_host.py'),
-    resolve(app.getAppPath(), 'native', 'windows_desktop_host.py'),
-    resolve(process.cwd(), 'native', 'windows_desktop_host.py'),
-    resolve(__dirname, '../../native/windows_desktop_host.py')
-  ]
+  const candidates = app.isPackaged
+    ? [resolve(process.resourcesPath, 'native', 'windows_desktop_host.exe')]
+    : [resolve(app.getAppPath(), 'native', 'bin', 'windows_desktop_host.exe')]
 
   return candidates.find((candidate) => existsSync(candidate))
 }
@@ -118,7 +116,11 @@ function findBridgeScript(explicitPath?: string): string | undefined {
 class FallbackDesktopHostAdapter implements DesktopHostAdapter {
   readonly kind = 'fallback' as const
 
-  constructor(private readonly reason: string) {}
+  constructor(private readonly reason: string, private readonly geometryAdapter?: DesktopHostAdapter) {}
+
+  async adjustSize(nativeHandle: string, widthDeltaPx: number, heightDeltaPx: number): Promise<void> {
+    await this.geometryAdapter?.adjustSize?.(nativeHandle, widthDeltaPx, heightDeltaPx)
+  }
 
   async attach(_nativeHandle: string): Promise<NativeHostSnapshot> {
     return fallbackSnapshot(this.reason)
@@ -131,10 +133,14 @@ class FallbackDesktopHostAdapter implements DesktopHostAdapter {
   async detach(_nativeHandle: string): Promise<void> {}
 }
 
-class WindowsPythonDesktopHostAdapter implements DesktopHostAdapter {
-  readonly kind = 'windows-python-ctypes' as const
+class WindowsNativeDesktopHostAdapter implements DesktopHostAdapter {
+  readonly kind = 'windows-win32-helper' as const
 
   constructor(private readonly scriptPath: string) {}
+
+  async adjustSize(nativeHandle: string, widthDeltaPx: number, heightDeltaPx: number): Promise<void> {
+    await this.runBridge('resize', nativeHandle, [String(widthDeltaPx), String(heightDeltaPx)])
+  }
 
   async attach(nativeHandle: string): Promise<NativeHostSnapshot> {
     return toSnapshot(await this.runBridge('attach', nativeHandle))
@@ -145,18 +151,14 @@ class WindowsPythonDesktopHostAdapter implements DesktopHostAdapter {
   }
 
   async detach(nativeHandle: string): Promise<void> {
-    try {
-      await this.runBridge('detach', nativeHandle)
-    } catch (error) {
-      console.warn('QUIETDESK_DESKTOP_DETACH_ERROR', error)
-    }
+    await this.runBridge('detach', nativeHandle)
   }
 
-  private async runBridge(action: BridgeAction, nativeHandle: string): Promise<BridgeResult> {
+  private async runBridge(action: BridgeAction, nativeHandle: string, geometry: string[] = []): Promise<BridgeResult> {
     validateNativeHandle(nativeHandle)
 
     return await new Promise<BridgeResult>((resolvePromise, rejectPromise) => {
-      const child = spawn('python', [this.scriptPath, action, nativeHandle], {
+      const child = spawn(this.scriptPath, [action, nativeHandle, String(process.pid), ...geometry], {
         shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
@@ -228,7 +230,9 @@ class WindowsPythonDesktopHostAdapter implements DesktopHostAdapter {
 
 export function createDesktopHostAdapter(options: DesktopHostAdapterOptions): DesktopHostAdapter {
   if (options.forceFallback) {
-    return new FallbackDesktopHostAdapter('Desktop mode was disabled by QUIETDESK_FORCE_FALLBACK')
+    const helper = process.platform === 'win32' ? findBridgeScript(options.bridgeScriptPath) : undefined
+    return new FallbackDesktopHostAdapter('Desktop mode was disabled by QUIETDESK_FORCE_FALLBACK',
+      helper ? new WindowsNativeDesktopHostAdapter(helper) : undefined)
   }
   if (process.platform !== 'win32') {
     return new FallbackDesktopHostAdapter(`Desktop host is only implemented for Windows, not ${process.platform}`)
@@ -236,8 +240,8 @@ export function createDesktopHostAdapter(options: DesktopHostAdapterOptions): De
 
   const scriptPath = findBridgeScript(options.bridgeScriptPath)
   if (!scriptPath) {
-    return new FallbackDesktopHostAdapter('The fixed Windows desktop bridge script was not found')
+    return new FallbackDesktopHostAdapter('The fixed Windows desktop helper was not found; build native/build-helper.ps1 and package its executable')
   }
 
-  return new WindowsPythonDesktopHostAdapter(scriptPath)
+  return new WindowsNativeDesktopHostAdapter(scriptPath)
 }

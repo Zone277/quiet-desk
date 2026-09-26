@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
 import { createRequire } from 'node:module'
@@ -7,7 +7,8 @@ import { afterEach, describe, expect, test } from 'vitest'
 import type { DesktopHostStatus } from '../../src/shared/desktop-spike'
 
 const PROJECT_ROOT = resolve(process.cwd())
-const BRIDGE_PATH = join(PROJECT_ROOT, 'native', 'windows_desktop_host.py')
+const BRIDGE_PATH = join(PROJECT_ROOT, 'native', 'bin', 'windows_desktop_host.exe')
+const EVIDENCE_ROOT = join(PROJECT_ROOT, 'test-results', 'desktop-stage6', new Date().toISOString().replace(/[:.]/gu, '-'))
 const TEST_TIMEOUT_MS = 20_000
 const PROCESS_TIMEOUT_MS = 12_000
 const require = createRequire(import.meta.url)
@@ -208,6 +209,11 @@ function expectSafeWindowOptions(status: DesktopHostStatus): void {
   expect.soft(status.windowBounds.height).toBe(420)
 }
 
+async function recordEvidence(name: string, value: unknown): Promise<void> {
+  await mkdir(EVIDENCE_ROOT, { recursive: true })
+  await writeFile(join(EVIDENCE_ROOT, `${name}.json`), JSON.stringify(value, null, 2), 'utf8')
+}
+
 afterEach(async () => {
   await Promise.all([...liveChildren].map(async (child) => terminateOwnedProcessTree(child)))
   liveChildren.clear()
@@ -227,7 +233,7 @@ afterEach(async () => {
 
 describe.sequential('QuietDesk Windows desktop host', () => {
   test.skipIf(process.platform !== 'win32')(
-    'Python bridge rejects missing, malformed, zero, and non-existent HWND values with structured JSON',
+    'fixed Win32 helper rejects missing, malformed, zero, and non-existent HWND values with structured JSON',
     async () => {
       const cases = [
         { args: [], code: 2, action: 'unknown', error: /Usage:/u },
@@ -237,7 +243,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       ]
 
       for (const item of cases) {
-        const result = await runProcess('python', [BRIDGE_PATH, ...item.args], { timeoutMs: 5_000 })
+        const result = await runProcess(BRIDGE_PATH, item.args, { timeoutMs: 5_000 })
         expect(result.timedOut).toBe(false)
         expect(result.code).toBe(item.code)
         expect(result.stderr).toBe('')
@@ -258,7 +264,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       join(PROJECT_ROOT, 'src', 'main', 'platform', 'desktop-host.ts'),
       'utf8'
     )
-    const nativeSource = await readFile(BRIDGE_PATH, 'utf8')
+    const nativeSource = await readFile(join(PROJECT_ROOT, 'native', 'windows_desktop_host.cs'), 'utf8')
     const ipcSource = await readFile(
       join(PROJECT_ROOT, 'src', 'main', 'ipc', 'desktop-spike-ipc.ts'),
       'utf8'
@@ -287,14 +293,16 @@ describe.sequential('QuietDesk Windows desktop host', () => {
     expect(windowSource).toContain("screen.on('display-metrics-changed'")
     expect(windowSource).toContain('await rename(temporaryPath, statePath)')
 
-    expect(adapterSource).toContain("spawn('python', [this.scriptPath, action, nativeHandle]")
+    expect(adapterSource).toContain('spawn(this.scriptPath, [action, nativeHandle, String(process.pid), ...geometry]')
+    expect(adapterSource).not.toContain("spawn('python'")
     expect(adapterSource).toContain('shell: false')
     expect(adapterSource).toContain('validateNativeHandle(nativeHandle)')
     expect(adapterSource).not.toContain('shell: true')
     expect(adapterSource).not.toMatch(/\bexec(?:File)?\s*\(/u)
 
-    expect(nativeSource).toContain('SetParent(target, host)')
-    expect(nativeSource).toContain('raw_handle.isdecimal()')
+    expect(nativeSource).toContain('Parent(target, host)')
+    expect(nativeSource).toContain('NumberStyles.None')
+    expect(nativeSource).toContain('MapWindowPoints(IntPtr.Zero, parent')
     expect(nativeSource).not.toMatch(/CreateRemoteThread|WriteProcessMemory|OpenProcess/u)
 
     expect(ipcSource).toContain('event.sender !== controller.window.webContents')
@@ -303,7 +311,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
     expect(mainSource).toContain("process.env.QUIETDESK_TEST_USER_DATA")
     expect(mainSource).toContain("process.env.QUIETDESK_FORCE_FALLBACK === '1'")
     expect(mainSource).toContain('process.env.QUIETDESK_AUTO_QUIT_MS')
-    expect(packageJson.scripts?.['test:platform']).toBe('npm run build && vitest run tests/platform')
+    expect(packageJson.scripts?.['test:platform']).toContain('vitest run tests/platform')
   })
 
   test.skipIf(process.platform !== 'win32')(
@@ -315,6 +323,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       expect(result.timedOut).toBe(false)
       expect(result.signal).toBeNull()
       expect(result.code, result.stderr).toBe(0)
+      expect(result.stderr).not.toMatch(/QUIETDESK_SHUTDOWN_ERROR|QUIETDESK_WINDOW_GEOMETRY_MISMATCH/u)
       expect(result.statuses.length, result.stdout).toBeGreaterThanOrEqual(1)
 
       const status = result.statuses.at(-1)
@@ -332,6 +341,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       })
       expect(status?.reason).toContain('QUIETDESK_FORCE_FALLBACK')
       console.info(`QA_S1_FORCED_FALLBACK_STATUS ${JSON.stringify(status)}`)
+      await recordEvidence('fallback', { status, stdout: result.stdout, stderr: result.stderr, code: result.code })
       expectSafeWindowOptions(status as DesktopHostStatus)
 
       const expectedStatePath = resolve(userData, 'desktop-window-state.json')
@@ -352,6 +362,30 @@ describe.sequential('QuietDesk Windows desktop host', () => {
   )
 
   test.skipIf(process.platform !== 'win32')(
+    'restores exact non-preset DIP bounds across two Electron processes',
+    async () => {
+      const userData = await makeIsolatedUserData()
+      const statePath = join(userData, 'desktop-window-state.json')
+      await writeFile(statePath, JSON.stringify({ version: 1,
+        bounds: { x: 90, y: 120, width: 437, height: 386 }, displayId: 'removed-display', scaleFactor: 2 }), 'utf8')
+      for (let run = 0; run < 2; run += 1) {
+        const result = await runElectron(userData, false)
+        expect(result.code, result.stderr).toBe(0)
+        expect(result.stderr).not.toMatch(/QUIETDESK_SHUTDOWN_ERROR|QUIETDESK_WINDOW_GEOMETRY_MISMATCH/u)
+        expect(result.timedOut).toBe(false)
+        const status = result.statuses.at(-1)
+        await recordEvidence(`restore-${run}`, { status, stdout: result.stdout, stderr: result.stderr, code: result.code })
+        expect(status?.windowBounds).toEqual({ x: 90, y: 120, width: 437, height: 386 })
+        expect(status?.focused).toBe(false)
+        expect(JSON.parse(await readFile(statePath, 'utf8'))).toMatchObject({
+          bounds: { x: 90, y: 120, width: 437, height: 386 }
+        })
+      }
+    },
+    TEST_TIMEOUT_MS
+  )
+
+  test.skipIf(process.platform !== 'win32')(
     'non-forced Electron run emits a self-consistent WorkerW/Progman diagnostic',
     async () => {
       const userData = await makeIsolatedUserData()
@@ -362,13 +396,14 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       })
       const liveStatus = await waitForStatus(observer.promise, 3_000)
       const inspectionResult = liveStatus.mode === 'desktop'
-        ? await runProcess('python', [BRIDGE_PATH, 'inspect', liveStatus.nativeHandle], { timeoutMs: 5_000 })
+        ? await runProcess(BRIDGE_PATH, ['inspect', liveStatus.nativeHandle], { timeoutMs: 5_000 })
         : undefined
       const result = await runtimePromise
 
       expect(result.timedOut).toBe(false)
       expect(result.signal).toBeNull()
       expect(result.code, result.stderr).toBe(0)
+      expect(result.stderr).not.toMatch(/QUIETDESK_SHUTDOWN_ERROR|QUIETDESK_WINDOW_GEOMETRY_MISMATCH/u)
       expect(result.statuses.length, result.stdout).toBeGreaterThanOrEqual(1)
 
       const status = result.statuses.at(-1) as DesktopHostStatus
@@ -377,10 +412,12 @@ describe.sequential('QuietDesk Windows desktop host', () => {
       expect(status.platform).toBe('win32')
       expect(status.windowsBuild).toMatch(/^\d+$/u)
       expect(status.nativeHandle).toMatch(/^[1-9]\d*$/u)
+      // Stage 6 has a built helper: ordinary fallback is not successful host validation.
+      expect(status.mode, result.stderr).toBe('desktop')
 
       if (status.mode === 'desktop') {
         expect(status.attached).toBe(true)
-        expect(status.native).toMatchObject({ bridge: 'python-ctypes', success: true })
+        expect(status.native).toMatchObject({ bridge: 'win32-helper', success: true })
         expect(status.native.parentClass).toMatch(/^(WorkerW|Progman)$/u)
         expect(status.native.parentHandle).toMatch(/^0x[0-9A-F]+$/u)
         expect(status.native.targetHandle).toMatch(/^0x[0-9A-F]+$/u)
@@ -399,6 +436,7 @@ describe.sequential('QuietDesk Windows desktop host', () => {
           parentClass: status.native.parentClass
         })
         console.info(`QA_S1_NATIVE_INSPECTION ${JSON.stringify(inspection)}`)
+        await recordEvidence('desktop', { status, inspection, stdout: result.stdout, stderr: result.stderr, code: result.code })
       } else {
         expect(status.attached).toBe(false)
         expect(status.reason.length).toBeGreaterThan(0)

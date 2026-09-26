@@ -14,6 +14,7 @@ import {
   type CaptureWindowController
 } from './windows/capture-window-controller'
 import { createDesktopSpikeWindow, type DesktopSpikeController } from './windows/desktop-spike-window'
+import { createQuietDeskTray } from './tray'
 
 const STORAGE_SMOKE_NOTE_ID = '20000000-0000-4000-8000-000000000001'
 const STORAGE_SMOKE_KEY = '20000000-0000-4000-8000-000000000002'
@@ -26,6 +27,9 @@ let unregisterQuietDeskIpc: (() => void) | undefined
 let captureWindowController: CaptureWindowController | undefined
 let captureShortcutManager: GlobalShortcutManager | undefined
 let testOccupiedShortcut: string | undefined
+let residentTray: ReturnType<typeof createQuietDeskTray> | undefined
+let quitting = false
+let cleanupComplete = false
 
 function configureUserDataPath(): void {
   const requestedUserData = process.env.QUIETDESK_TEST_USER_DATA
@@ -57,7 +61,7 @@ function systemTimeZone(): string {
 }
 
 function applicationClock(): Clock {
-  const fixedInstant = process.env.QUIETDESK_TEST_USER_DATA
+  const fixedInstant = !app.isPackaged && process.env.QUIETDESK_TEST_USER_DATA
     ? process.env.QUIETDESK_TEST_NOW
     : undefined
   return fixedInstant ? new FixedClock(fixedInstant) : new SystemClock()
@@ -116,7 +120,7 @@ configureUserDataPath()
 
 app.whenReady().then(async () => {
   const databasePath = resolve(app.getPath('userData'), 'data', 'quietdesk.sqlite3')
-  const smokeMode = process.env.QUIETDESK_STORAGE_SMOKE_MODE
+  const smokeMode = !app.isPackaged ? process.env.QUIETDESK_STORAGE_SMOKE_MODE : undefined
   if (smokeMode) {
     runStorageSmoke(databasePath, smokeMode)
     app.quit()
@@ -136,9 +140,9 @@ app.whenReady().then(async () => {
   })
   const preloadPath = resolve(__dirname, '../preload/index.js')
   const rendererDirectory = resolve(__dirname, '../renderer')
-  const rendererUrl = process.env.ELECTRON_RENDERER_URL
+  const rendererUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL
   let failNextCaptureSubmit = Boolean(
-    process.env.QUIETDESK_TEST_USER_DATA &&
+    !app.isPackaged && process.env.QUIETDESK_TEST_USER_DATA &&
     process.env.QUIETDESK_TEST_FAIL_NEXT_CAPTURE_SUBMIT === '1'
   )
 
@@ -220,12 +224,19 @@ app.whenReady().then(async () => {
       })
     ])
     controller = widgetController
+    for (const residentWindow of [widgetController.window, library]) {
+      residentWindow.on('close', (event) => {
+        if (quitting) return
+        event.preventDefault()
+        residentWindow.hide()
+      })
+    }
     captureWindowController = createCaptureWindowController(capture)
     resolveCaptureController(captureWindowController)
 
     const initialShortcut = storage.getOrCreateCaptureShortcut(defaultCaptureShortcut)
     if (
-      process.env.QUIETDESK_TEST_USER_DATA &&
+      !app.isPackaged && process.env.QUIETDESK_TEST_USER_DATA &&
       process.env.QUIETDESK_TEST_OCCUPY_SHORTCUT === '1' &&
       globalShortcut.register(initialShortcut, () => undefined)
     ) {
@@ -242,6 +253,8 @@ app.whenReady().then(async () => {
     captureShortcutManager.register()
     resolveShortcutManager(captureShortcutManager)
     resolveWindows({ widget: widgetController.window, capture, library })
+    residentTray = createQuietDeskTray({ widget: widgetController.window, capture, library },
+      () => storage?.getOrCreateAppearance(detectLocale()).locale ?? detectLocale())
   } catch (error) {
     rejectWindows(error)
     rejectCaptureController(error)
@@ -258,7 +271,13 @@ app.whenReady().then(async () => {
   app.exit(1)
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (cleanupComplete) return
+  event.preventDefault()
+  if (quitting) return
+  quitting = true
+  residentTray?.dispose()
+  residentTray = undefined
   captureShortcutManager?.dispose()
   captureShortcutManager = undefined
   if (testOccupiedShortcut) globalShortcut.unregister(testOccupiedShortcut)
@@ -267,9 +286,18 @@ app.on('before-quit', () => {
   captureWindowController = undefined
   unregisterQuietDeskIpc?.()
   unregisterQuietDeskIpc = undefined
-  storage?.close()
-  storage = undefined
-  void controller?.dispose()
+  void (async () => {
+    try {
+      await controller?.dispose()
+    } catch (error) {
+      console.error('QUIETDESK_SHUTDOWN_ERROR', error)
+    } finally {
+      storage?.close()
+      storage = undefined
+      cleanupComplete = true
+      app.quit()
+    }
+  })()
 })
 
 app.on('window-all-closed', () => {
