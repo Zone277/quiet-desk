@@ -155,7 +155,7 @@ export const dailyLogItemSchema = z.object({
   sourceEntityId: entityIdSchema,
   sourceOperationId: entityIdSchema.nullable(),
   stableOrder: z.number().int().nonnegative(),
-  snapshotMarkdown: markdownSchema
+  snapshotMarkdown: z.string().max(1_002_000)
 }).strict()
 
 export const dailyLogSchema = z.object({

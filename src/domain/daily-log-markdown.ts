@@ -7,22 +7,36 @@ const sections: Array<{ key: DailyLogItem['section']; heading: string }> = [
   { key: 'notes', heading: '当天笔记' }
 ]
 
-export function formatDailyLogInstant(instant: string, timeZone: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    timeZone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
-  }).format(new Date(instant))
+const englishHeadings: Record<DailyLogItem['section'], string> = {
+  completed: 'Completed today',
+  'pending-at-boundary': 'Pending at day boundary',
+  planned: 'Schedules (planned)',
+  notes: 'Notes today'
 }
 
-export function dailyLogToMarkdown(log: DailyLog): string {
-  const lines = [`# Daily Log · ${log.logDate}`, '', `时区：${log.attributionTimeZone}`, '']
+export function formatDailyLogInstant(instant: string, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    calendar: 'gregory', numberingSystem: 'latn',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(instant))
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`
+}
+
+export function dailyLogToMarkdown(log: DailyLog, locale: 'zh-CN' | 'en-US' = 'zh-CN'): string {
+  const english = locale === 'en-US'
+  const lines = [
+    `# Daily Log · ${log.logDate}`, '',
+    `${english ? 'Time zone: ' : '时区：'}${log.attributionTimeZone}`, ''
+  ]
   for (const section of sections) {
-    lines.push(`## ${section.heading}`, '')
+    lines.push(`## ${english ? englishHeadings[section.key] : section.heading}`, '')
     const items = log.autoItems.filter((item) => item.section === section.key)
-    if (items.length === 0) lines.push('（无）', '')
+    if (items.length === 0) lines.push(english ? '(None)' : '（无）', '')
     else for (const item of items) lines.push(item.snapshotMarkdown, '')
   }
-  lines.push('## 手写补充', '', log.manualMarkdown, '')
+  lines.push(english ? '## Manual notes' : '## 手写补充', '', log.manualMarkdown, '')
   return lines.join('\n')
 }

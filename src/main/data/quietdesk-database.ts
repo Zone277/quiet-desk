@@ -216,6 +216,31 @@ const MIGRATIONS = [
       ON daily_log_items(source_entity_type, source_entity_id);
     CREATE INDEX idx_history_cutoff
       ON operation_history(occurred_at_utc, sequence);
+  `,
+  `
+    CREATE TABLE daily_log_items_v4 (
+      id TEXT PRIMARY KEY NOT NULL,
+      log_date TEXT NOT NULL REFERENCES daily_logs(log_date) ON DELETE CASCADE,
+      section TEXT NOT NULL CHECK (section IN ('completed', 'pending-at-boundary', 'planned', 'notes')),
+      source_entity_type TEXT NOT NULL CHECK (source_entity_type IN ('task', 'note', 'schedule')),
+      source_entity_id TEXT NOT NULL,
+      source_operation_id TEXT,
+      stable_order INTEGER NOT NULL CHECK (stable_order >= 0),
+      snapshot_markdown TEXT NOT NULL CHECK (length(snapshot_markdown) <= 1002000),
+      UNIQUE(log_date, section, source_entity_type, source_entity_id)
+    ) STRICT;
+
+    INSERT INTO daily_log_items_v4 (
+      id, log_date, section, source_entity_type, source_entity_id,
+      source_operation_id, stable_order, snapshot_markdown
+    )
+    SELECT id, log_date, section, source_entity_type, source_entity_id,
+      source_operation_id, stable_order, snapshot_markdown FROM daily_log_items;
+
+    DROP TABLE daily_log_items;
+    ALTER TABLE daily_log_items_v4 RENAME TO daily_log_items;
+    CREATE INDEX idx_daily_log_items_source
+      ON daily_log_items(source_entity_type, source_entity_id);
   `
 ] as const
 

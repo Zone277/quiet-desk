@@ -40,7 +40,7 @@ afterEach(async () => {
 })
 
 describe('Stage 5 Daily Log SQLite', () => {
-  test('migrates a populated v2-shaped database to v3 without rebuilding entities', async () => {
+  test('migrates a populated v2-shaped database to v4 without rebuilding entities', async () => {
     const path = await pathForTest()
     let service = open(path, '2026-09-21T03:00:00.000Z')
     const note = service.createNote(command({
@@ -66,7 +66,7 @@ describe('Stage 5 Daily Log SQLite', () => {
     const migrated = new DatabaseSync(path)
     try {
       const version = migrated.prepare('PRAGMA user_version').get() as { user_version: number }
-      expect(version.user_version).toBe(3)
+      expect(version.user_version).toBe(4)
     } finally {
       migrated.close()
     }
@@ -164,7 +164,7 @@ describe('Stage 5 Daily Log SQLite', () => {
     const body = '文'.repeat(1_000_000)
     service.createNote(command({ id: randomUUID(), title: '标题', bodyMarkdown: body }))
     const item = service.getOrGenerateDailyLog('2026-09-21').autoItems[0]
-    expect(item?.snapshotMarkdown).toBe(body)
+    expect(item?.snapshotMarkdown).toBe(`### 标题\n\n${body}`)
   })
 
   test('trash hides, restore rebuilds, permanent deletion purges draft and log receipts', async () => {

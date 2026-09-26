@@ -4,6 +4,8 @@ import {
   allDayScheduleSchema,
   captureDraftPayloadSchema,
   dateOnlySchema,
+  dailyLogItemSchema,
+  markdownSchema,
   taskSchema,
   timedScheduleSchema,
   utcInstantSchema
@@ -26,6 +28,15 @@ const id = '01234567-89ab-4def-8abc-0123456789ab'
 const instant = '2026-09-21T08:15:30.000Z'
 
 describe('v4 shared contract', () => {
+  test('permits generated note headings without widening source input limits', () => {
+    const snapshotMarkdown = `### ${'\\*'.repeat(500)}\n\n${'文'.repeat(1_000_000)}`
+    const item = { id, section: 'notes', sourceEntityType: 'note', sourceEntityId: id,
+      sourceOperationId: null, stableOrder: 0, snapshotMarkdown }
+    expect(snapshotMarkdown.length).toBe(1_001_006)
+    expect(dailyLogItemSchema.safeParse(item).success).toBe(true)
+    expect(dailyLogItemSchema.safeParse({ ...item, snapshotMarkdown: 'x'.repeat(1_002_001) }).success).toBe(false)
+    expect(markdownSchema.safeParse('x'.repeat(1_000_001)).success).toBe(false)
+  })
   test('keeps UTC instants and date-only values distinct', () => {
     expect(utcInstantSchema.safeParse(instant).success).toBe(true)
     expect(utcInstantSchema.safeParse('2026-09-21').success).toBe(false)

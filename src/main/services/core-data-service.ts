@@ -772,7 +772,8 @@ export class CoreDataService {
   }
 
   renderDailyLogMarkdown(date: DateOnly): string {
-    return dailyLogToMarkdown(this.getOrGenerateDailyLog(date))
+    const locale = localeSchema.parse(this.readSetting('appearance.locale') ?? 'zh-CN')
+    return dailyLogToMarkdown(this.getOrGenerateDailyLog(date), locale)
   }
 
   reconcileActiveDailyLogs(): number {
@@ -1840,15 +1841,15 @@ export class CoreDataService {
           : schedule.startDate <= date && schedule.endDateExclusive > date
         if (overlaps) {
           const when = schedule.kind === 'timed'
-            ? `${formatDailyLogInstant(schedule.startAtUtc, timeZone)} — ${formatDailyLogInstant(schedule.endAtUtc, timeZone)}`
-            : `${schedule.startDate} — ${schedule.endDateExclusive}（结束日不含）`
-          push('planned', row, `- 计划：${safeTitle(schedule.title)}（${when}）`)
+            ? `[${formatDailyLogInstant(schedule.startAtUtc, timeZone)}, ${formatDailyLogInstant(schedule.endAtUtc, timeZone)})`
+            : `[${schedule.startDate}, ${schedule.endDateExclusive})`
+          push('planned', row, `- ${safeTitle(schedule.title)} ${when}`)
         }
       } else if (entity.type === 'note' && !(!historical && date > today)) {
         if (noteOrigins.get(entity.value.id)?.attribution_date === date) {
           const title = entity.value.title ? `### ${safeTitle(entity.value.title)}\n\n` : ''
           const withTitle = `${title}${entity.value.bodyMarkdown}`
-          push('notes', row, withTitle.length <= 1_000_000 ? withTitle : entity.value.bodyMarkdown)
+          push('notes', row, withTitle)
         }
       }
     }

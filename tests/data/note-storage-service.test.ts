@@ -77,7 +77,7 @@ describe('NoteStorageService', () => {
         ORDER BY name
       `).all() as Array<{ name: string }>
 
-      expect(version.user_version).toBe(3)
+      expect(version.user_version).toBe(4)
       expect(tables.map(({ name }) => name)).toEqual([
         'app_settings',
         'change_events',
