@@ -8,7 +8,7 @@ import type { DesktopHostStatus } from '../../src/shared/desktop-spike'
 
 const PROJECT_ROOT = resolve(process.cwd())
 const BRIDGE_PATH = join(PROJECT_ROOT, 'native', 'bin', 'windows_desktop_host.exe')
-const EVIDENCE_ROOT = join(PROJECT_ROOT, 'test-results', 'desktop-stage6', new Date().toISOString().replace(/[:.]/gu, '-'))
+const EVIDENCE_ROOT = join(PROJECT_ROOT, 'test-results', 'desktop-stage7', new Date().toISOString().replace(/[:.]/gu, '-'))
 const TEST_TIMEOUT_MS = 20_000
 const PROCESS_TIMEOUT_MS = 12_000
 const require = createRequire(import.meta.url)
@@ -233,6 +233,27 @@ afterEach(async () => {
 
 describe.sequential('QuietDesk Windows desktop host', () => {
   test.skipIf(process.platform !== 'win32')(
+    'resize argv parser preserves signed integers across cultures and rejects invalid or out-of-bound deltas without GUI',
+    async () => {
+      const root = await makeIsolatedUserData()
+      const probePath = join(root, 'desktop-resize-regression.exe')
+      const compilerPath = join(process.env.WINDIR ?? 'C:/Windows', 'Microsoft.NET', 'Framework64', 'v4.0.30319', 'csc.exe')
+      const compiled = await runProcess(compilerPath, ['/nologo', '/target:exe', '/platform:x64',
+        '/reference:System.Web.Extensions.dll', '/main:DesktopResizeRegression', `/out:${probePath}`,
+        join(PROJECT_ROOT, 'native', 'windows_desktop_host.cs'),
+        join(PROJECT_ROOT, 'native', 'desktop-resize-regression.cs')])
+      expect(compiled.code, compiled.stdout + compiled.stderr).toBe(0)
+      const result = await runProcess(probePath, [])
+      const evidence = parseSingleJson(result.stdout)
+      await recordEvidence('resize-parser', { ...result, evidence })
+      expect(result.timedOut).toBe(false)
+      expect(result.code, result.stdout + result.stderr).toBe(0)
+      expect(evidence.passed).toBe(true)
+    },
+    TEST_TIMEOUT_MS
+  )
+
+  test.skipIf(process.platform !== 'win32')(
     'fixed Win32 helper rejects missing, malformed, zero, and non-existent HWND values with structured JSON',
     async () => {
       const cases = [
@@ -370,11 +391,11 @@ describe.sequential('QuietDesk Windows desktop host', () => {
         bounds: { x: 90, y: 120, width: 437, height: 386 }, displayId: 'removed-display', scaleFactor: 2 }), 'utf8')
       for (let run = 0; run < 2; run += 1) {
         const result = await runElectron(userData, false)
+        await recordEvidence(`restore-${run}`, { status: result.statuses.at(-1), stdout: result.stdout, stderr: result.stderr, code: result.code })
         expect(result.code, result.stderr).toBe(0)
         expect(result.stderr).not.toMatch(/QUIETDESK_SHUTDOWN_ERROR|QUIETDESK_WINDOW_GEOMETRY_MISMATCH/u)
         expect(result.timedOut).toBe(false)
         const status = result.statuses.at(-1)
-        await recordEvidence(`restore-${run}`, { status, stdout: result.stdout, stderr: result.stderr, code: result.code })
         expect(status?.windowBounds).toEqual({ x: 90, y: 120, width: 437, height: 386 })
         expect(status?.focused).toBe(false)
         expect(JSON.parse(await readFile(statePath, 'utf8'))).toMatchObject({

@@ -431,20 +431,21 @@ export class DesktopSpikeWindowController implements DesktopSpikeController {
   private async restoreExactBounds(desired: Rectangle): Promise<void> {
     let requested = { ...desired }
     let canAdjust = this.adapter.adjustSize !== undefined
+    let applyDipBounds = true
     for (let attempt = 0; attempt < 4; attempt += 1) {
       if (this.disposed || this.window.isDestroyed()) return
-      this.window.setBounds(requested, false)
+      if (applyDipBounds) this.window.setBounds(requested, false)
       await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 0))
       if (this.disposed || this.window.isDestroyed()) return
-      const actual = this.window.getBounds()
+      let actual = this.window.getBounds()
       if (actual.x === desired.x && actual.y === desired.y &&
           actual.width === desired.width && actual.height === desired.height) return
       if (canAdjust && this.adapter.adjustSize) {
         const scale = screen.getDisplayMatching(actual).scaleFactor
         try {
           await this.adapter.adjustSize(this.handle,
-            Math.round((desired.width - actual.width) * scale),
-            Math.round((desired.height - actual.height) * scale))
+            clamp(Math.round((desired.width - actual.width) * scale), -64, 64),
+            clamp(Math.round((desired.height - actual.height) * scale), -64, 64))
         } catch (error) {
           canAdjust = false
           console.warn('QUIETDESK_WINDOW_GEOMETRY_HELPER_ERROR', error)
@@ -453,7 +454,15 @@ export class DesktopSpikeWindowController implements DesktopSpikeController {
         const corrected = this.window.getBounds()
         if (corrected.x === desired.x && corrected.y === desired.y &&
             corrected.width === desired.width && corrected.height === desired.height) return
+        actual = corrected
+        if (canAdjust && corrected.x === desired.x && corrected.y === desired.y) {
+          // Keep native progress. A new integer-DIP setBounds can recreate the
+          // original large discrepancy before the remaining pixel steps finish.
+          applyDipBounds = false
+          continue
+        }
       }
+      applyDipBounds = true
       requested = {
         x: requested.x + desired.x - actual.x,
         y: requested.y + desired.y - actual.y,

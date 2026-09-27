@@ -135,6 +135,13 @@ internal static class DesktopHost
             {"windowRectPx", new { x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top }}
         };
     }
+    internal static bool TryParseResizeDeltas(string[] args, out int dx, out int dy) {
+        dx = 0; dy = 0;
+        return args.Length == 5 &&
+            int.TryParse(args[3], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out dx) &&
+            int.TryParse(args[4], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out dy) &&
+            Math.Abs((long)dx) <= 64 && Math.Abs((long)dy) <= 64;
+    }
     static int Main(string[] args) {
         string action = args.Length > 0 ? args[0] : "unknown";
         try {
@@ -158,9 +165,13 @@ internal static class DesktopHost
             if (action == "detach") { Detach(target); route = "desktop-detach"; }
             if (action == "resize") {
                 int dx, dy;
-                if (args.Length != 5 || !int.TryParse(args[3], out dx) || !int.TryParse(args[4], out dy) ||
-                    Math.Abs((long)dx) > 64 || Math.Abs((long)dy) > 64)
-                    return Emit(new { action = action, success = false, error = "Resize requires bounded pixel deltas" }, 2);
+                if (!TryParseResizeDeltas(args, out dx, out dy))
+                    return Emit(new { action = action, success = false, error = "Resize requires bounded pixel deltas",
+                        argumentCount = args.Length, widthDelta = args.Length > 3 ? args[3] : null,
+                        heightDelta = args.Length > 4 ? args[4] : null,
+                        culture = CultureInfo.CurrentCulture.Name,
+                        positiveSign = CultureInfo.CurrentCulture.NumberFormat.PositiveSign,
+                        negativeSign = CultureInfo.CurrentCulture.NumberFormat.NegativeSign }, 2);
                 Rect rect; Require(GetWindowRect(target, out rect), "GetWindowRect failed");
                 rect.Right += dx; rect.Bottom += dy;
                 Position(target, GetParent(target), rect);

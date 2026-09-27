@@ -65,6 +65,38 @@ const attached: NativeHostSnapshot = {
 }
 
 describe('Desktop controller lifecycle (no GUI)', () => {
+  test('large measured resize discrepancy is corrected in bounded pixel steps without resetting native progress', async () => {
+    const calls: Array<[number, number]> = []
+    let widthPx = 437 * 1.5
+    let heightPx = 386 * 1.5
+    const adapter: DesktopHostAdapter = {
+      kind: 'windows-win32-helper', attach: async () => attached,
+      inspect: async () => attached, detach: async () => undefined,
+      adjustSize: async (_handle, dx, dy) => {
+        calls.push([dx, dy])
+        if (!Number.isInteger(dx) || !Number.isInteger(dy) || Math.abs(dx) > 64 || Math.abs(dy) > 64) {
+          throw new Error('Resize requires bounded pixel deltas')
+        }
+        widthPx += dx
+        heightPx += dy
+      }
+    }
+    const { window, controller } = await fixture(adapter)
+    window.bounds = { x: 90, y: 120, width: 437, height: 386 }
+    window.getBounds = () => ({ ...window.bounds, width: Math.round(widthPx / 1.5), height: Math.round(heightPx / 1.5) })
+    // Reproduce the live measured 590x518 after the DIP request, which generated
+    // argv -229/-198 at 150%. Repeating setBounds resets already-made progress.
+    window.setBounds = (bounds) => { window.bounds = { ...bounds }; widthPx = 590 * 1.5; heightPx = 518 * 1.5 }
+    try {
+      const status = await controller.retryHost('large-size-discrepancy')
+      expect(status.windowBounds).toEqual({ x: 90, y: 120, width: 437, height: 386 })
+      expect(calls.length).toBeGreaterThan(1)
+      expect(calls.every(([dx, dy]) => Number.isInteger(dx) && Number.isInteger(dy) && Math.abs(dx) <= 64 && Math.abs(dy) <= 64)).toBe(true)
+    } finally {
+      await controller.dispose()
+    }
+  })
+
   test('dispose drains in-flight attach, detaches once, flushes exact last bounds and removes listeners', async () => {
     const pending = deferred<NativeHostSnapshot>()
     const operations: string[] = []
