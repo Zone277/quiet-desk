@@ -40,7 +40,7 @@ afterEach(async () => {
 })
 
 describe('Stage 5 Daily Log SQLite', () => {
-  test('migrates a populated v2-shaped database to v4 without rebuilding entities', async () => {
+  test('migrates a populated v2-shaped database to v5 without rebuilding entities', async () => {
     const path = await pathForTest()
     let service = open(path, '2026-09-21T03:00:00.000Z')
     const note = service.createNote(command({
@@ -66,7 +66,7 @@ describe('Stage 5 Daily Log SQLite', () => {
     const migrated = new DatabaseSync(path)
     try {
       const version = migrated.prepare('PRAGMA user_version').get() as { user_version: number }
-      expect(version.user_version).toBe(4)
+      expect(version.user_version).toBe(5)
     } finally {
       migrated.close()
     }

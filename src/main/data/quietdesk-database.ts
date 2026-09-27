@@ -241,6 +241,48 @@ const MIGRATIONS = [
     ALTER TABLE daily_log_items_v4 RENAME TO daily_log_items;
     CREATE INDEX idx_daily_log_items_source
       ON daily_log_items(source_entity_type, source_entity_id);
+  `,
+  `
+    -- JSON.stringify can expand each UTF-16 code unit to six ASCII characters.
+    -- 6 * (1000000 body + 500 title) = 6003000; 7000 covers fixed fields.
+    -- These are derived limits; entity/draft input schemas remain unchanged.
+    CREATE TABLE drafts_v5 (
+      id TEXT PRIMARY KEY NOT NULL,
+      capture_kind TEXT NOT NULL CHECK (capture_kind IN ('note', 'task', 'schedule')),
+      payload_json TEXT NOT NULL CHECK (length(payload_json) <= 6010000),
+      revision INTEGER NOT NULL CHECK (revision >= 1),
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL,
+      saved_at_utc TEXT NOT NULL
+    ) STRICT;
+    INSERT INTO drafts_v5 (id, capture_kind, payload_json, revision, created_at_utc, updated_at_utc, saved_at_utc)
+      SELECT id, capture_kind, payload_json, revision, created_at_utc, updated_at_utc, saved_at_utc FROM drafts;
+    DROP TABLE drafts;
+    ALTER TABLE drafts_v5 RENAME TO drafts;
+
+    CREATE TABLE operation_history_v5 (
+      operation_id TEXT PRIMARY KEY NOT NULL,
+      sequence INTEGER NOT NULL UNIQUE,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('task', 'note', 'schedule')),
+      entity_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      occurred_at_utc TEXT NOT NULL,
+      attribution_date TEXT NOT NULL,
+      attribution_time_zone TEXT NOT NULL,
+      entity_revision INTEGER NOT NULL CHECK (entity_revision >= 1),
+      snapshot_json TEXT NOT NULL CHECK (length(snapshot_json) <= 6010000),
+      FOREIGN KEY (sequence) REFERENCES change_events(sequence) ON DELETE RESTRICT
+    ) STRICT;
+    INSERT INTO operation_history_v5 (
+      operation_id, sequence, entity_type, entity_id, operation, occurred_at_utc,
+      attribution_date, attribution_time_zone, entity_revision, snapshot_json
+    ) SELECT operation_id, sequence, entity_type, entity_id, operation, occurred_at_utc,
+      attribution_date, attribution_time_zone, entity_revision, snapshot_json FROM operation_history;
+    DROP TABLE operation_history;
+    ALTER TABLE operation_history_v5 RENAME TO operation_history;
+    CREATE INDEX idx_history_entity ON operation_history(entity_type, entity_id, sequence);
+    CREATE INDEX idx_history_date ON operation_history(attribution_date, sequence);
+    CREATE INDEX idx_history_cutoff ON operation_history(occurred_at_utc, sequence);
   `
 ] as const
 

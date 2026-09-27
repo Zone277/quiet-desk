@@ -42,7 +42,7 @@ afterEach(async () => {
 })
 
 describe('Stage 6 Daily Log text with real SQLite', () => {
-  test('v3 to v4 preserves stored logs, links, indexes and deletion constraints', async () => {
+  test('v3 to v5 preserves stored logs, links, indexes and deletion constraints', async () => {
     const path = await pathForTest()
     let service = open(path)
     const note = service.createNote(command({
@@ -84,7 +84,7 @@ describe('Stage 6 Daily Log text with real SQLite', () => {
     const migrated = new DatabaseSync(path)
     try {
       migrated.exec('PRAGMA foreign_keys = ON')
-      expect(migrated.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 4 })
+      expect(migrated.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: 5 })
       expect(migrated.prepare('SELECT * FROM daily_logs ORDER BY log_date').all()).toEqual(storedLogs)
       expect(migrated.prepare('SELECT * FROM daily_log_items ORDER BY id').all()).toEqual(storedItems)
       expect(migrated.prepare('SELECT * FROM idempotency_receipts ORDER BY idempotency_key').all())
