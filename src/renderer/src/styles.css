@@ -1512,10 +1512,26 @@ kbd {
 
   .widget-sections .schedule-time {
     display: flex;
+    flex: none;
     margin-top: 0;
     font-size: 9px;
     line-height: 1.15;
     flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  .widget-sections .schedule-row .item-copy {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .widget-sections .schedule-row .item-copy strong {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .widget-sections .schedule-time > span:not(:first-child) { display: none; }
 
