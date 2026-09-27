@@ -21,6 +21,13 @@ export interface Copy {
   creating: string
   close: string
   cancel: string
+  edit: string
+  saveChanges: string
+  reopen: string
+  endExclusive: string
+  quitSaveFailed: string
+  unsavedEdit: string
+  markdownTooLong: string
   delete: string
   restore: string
   permanentlyDelete: string
@@ -142,6 +149,13 @@ const ZH: Copy = {
   creating: '正在创建…',
   close: '收起',
   cancel: '取消',
+  edit: '编辑',
+  saveChanges: '保存修改',
+  reopen: '重新打开任务',
+  endExclusive: '结束日（不包含）',
+  quitSaveFailed: '退出前保存失败，应用仍保持打开，请重试保存。',
+  unsavedEdit: '请先保存或取消实体修改，再退出或切换项目。',
+  markdownTooLong: 'Markdown 超过 1,000,000 字符，输入仍保留；请缩短后再保存。',
   delete: '删除',
   restore: '恢复',
   permanentlyDelete: '永久删除',
@@ -263,6 +277,13 @@ const EN: Copy = {
   creating: 'Creating…',
   close: 'Hide',
   cancel: 'Cancel',
+  edit: 'Edit',
+  saveChanges: 'Save changes',
+  reopen: 'Reopen task',
+  endExclusive: 'End date (exclusive)',
+  quitSaveFailed: 'Could not save before quitting. The app remains open; please retry saving.',
+  unsavedEdit: 'Save or cancel entity changes before quitting or switching items.',
+  markdownTooLong: 'Markdown exceeds 1,000,000 characters. Your input is retained; shorten it before saving.',
   delete: 'Delete',
   restore: 'Restore',
   permanentlyDelete: 'Delete permanently',

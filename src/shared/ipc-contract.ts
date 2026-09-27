@@ -454,9 +454,17 @@ export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>
 export type CaptureShortcutStatus = z.infer<typeof captureShortcutStatusSchema>
 export type ChangeEvent = z.infer<typeof changeEventSchema>
 
+export const runtimeContextSchema = z.object({
+  currentDate: dateOnlySchema,
+  resolvedTheme: resolvedThemeSchema
+}).strict()
+export type RuntimeContext = z.infer<typeof runtimeContextSchema>
+
 export interface QuietDeskApi {
   app: {
     bootstrap(request: BootstrapRequest): Promise<IpcResult<BootstrapSnapshot>>
+    subscribeRuntime(listener: (context: RuntimeContext) => void): () => void
+    subscribeQuitPreparation(listener: () => Promise<boolean>): () => void
   }
   widget: {
     getSnapshot(request: GetWidgetSnapshotRequest): Promise<IpcResult<WidgetSnapshot>>

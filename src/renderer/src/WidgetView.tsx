@@ -97,7 +97,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
       generation.current += 1
       unsubscribe()
     }
-  }, [refresh])
+  }, [refresh, bootstrap.currentDate])
 
   useEffect(() => setSelectedDate(bootstrap.currentDate), [bootstrap.currentDate])
 
@@ -242,7 +242,7 @@ export function WidgetView({ bootstrap, copy }: WidgetViewProps): React.JSX.Elem
                     <span className="schedule-marker" aria-hidden="true" />
                     <div className="item-copy">
                       <strong>{schedule.title}</strong>
-                      <div className="item-meta">
+                      <div className="item-meta schedule-time" data-testid="widget-schedule-time">
                         <span>{schedule.kind === 'all-day' ? copy.allDay : formatSchedule(schedule, bootstrap.locale, snapshot.appTimeZone)}</span>
                         {continuesBefore ? <span>{copy.continuesFromBefore}</span> : null}
                         {continuesAfter ? <span>{copy.continuesAfter}</span> : null}

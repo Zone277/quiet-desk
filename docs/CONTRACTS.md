@@ -208,3 +208,10 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - 发布 renderer 只使用静态 file 资源，忽略开发服务器环境变量；故障注入、固定测试 Clock、存储烟雾模式不在发布启动中启用。显式测试 userData 重定向只用于主进程启动隔离，不在 preload 暴露目录能力。
 - 桌面桥接为打包的 x64 .NET Framework/Win32 helper；仅接受固定动作、数字 HWND 与所有者 PID，renderer 不接触命令或句柄写入。Shell WorkerW/Progman/0x052C 不是稳定公开 API，不注入 Explorer，不要求管理员常驻。
 - 原始正文/手写区仍最多 1,000,000 字符；自动日志 `snapshotMarkdown` 最多 1,002,000 字符，为转义后的 500 字标题与排版前缀留出空间，不丢弃源标题或截断正文。仅扩大派生输出边界，IPC 仍为 v4；SQLite schema v4 以追加事务迁移保留旧日志条目、关联和手写区。
+
+## 14. 阶段 7 修复契约（Lead 冻结）
+
+- SQLite schema v5 追加事务迁移，草稿 `payload_json` 和操作 `snapshot_json` 最多 6,010,000 字符。JSON 转义最多六倍，`6 × (1,000,000 正文 + 500 标题) + 7,000 固定结构余量`；不是扩大业务输入上限。旧 schema v4 的说明为历史记录，迁移保留草稿、操作、回执、日志和手写区。
+- IPC v4 增量 `app.subscribeRuntime(listener)` 仅传 `{currentDate,resolvedTheme}`，主进程在持久化应用时区日变化（30 秒低频检查）、resume 或系统外观变化后通知已登记窗口。该通知不是用户提交的 `ChangeEvent`，不伪造持久 sequence。renderer 重取 bootstrap/必要查询；浏览旧日期不能自动跳回今日。停止时清理 timer 与 native 监听，不抢焦点。
+- `app.subscribeQuitPreparation(async listener => boolean)` 是只读生命周期订阅，不暴露退出/任意 IPC。主进程退出前发一次 UUID nonce，要求 Capture 与 Library 刷新待写草稿/手写补充；preload 只返回严格 nonce/boolean，主进程只接受等待列表中的登记 main frame 与当次 nonce。10 秒失败/超时取消退出且提示重试，不把保存失败转换为放弃。成功才销毁窗口、注销快捷键、解绑宿主、关闭库。
+- Library 已有实体的编辑和历史任务重开使用已有 `notes.update/tasks.update/reschedule/setCompletion/schedules.update`，revision 冲突/写入失败保留编辑内容；不增加业务日期资格规则或 API，不自动解析文字时间。

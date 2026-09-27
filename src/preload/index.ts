@@ -3,6 +3,15 @@ import { DESKTOP_SPIKE_CHANNELS, type DesktopSpikeApi } from '../shared/desktop-
 import { QUIETDESK_CHANNELS } from '../shared/ipc-channels'
 import type { ChangeEvent, QuietDeskApi, WindowOpenContext } from '../shared/ipc-contract'
 
+const quitListeners = new Set<() => Promise<boolean>>()
+ipcRenderer.on(QUIETDESK_CHANNELS.prepareQuit, async (_event: Electron.IpcRendererEvent, token: unknown) => {
+  if (typeof token !== 'string' || !/^[0-9a-f-]{36}$/iu.test(token)) return
+  const results = await Promise.all([...quitListeners].map(async (listener) => {
+    try { return await listener() === true } catch { return false }
+  }))
+  ipcRenderer.send(QUIETDESK_CHANNELS.quitPrepared, { token, ready: results.every(Boolean) })
+})
+
 const desktopSpikeApi: DesktopSpikeApi = Object.freeze({
   getStatus: () => ipcRenderer.invoke(DESKTOP_SPIKE_CHANNELS.getStatus),
   retryHost: () => ipcRenderer.invoke(DESKTOP_SPIKE_CHANNELS.retryHost)
@@ -10,7 +19,26 @@ const desktopSpikeApi: DesktopSpikeApi = Object.freeze({
 
 const quietDeskApi: QuietDeskApi = {
   app: {
-    bootstrap: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.bootstrap, request)
+    bootstrap: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.bootstrap, request),
+    subscribeQuitPreparation: (listener) => {
+      quitListeners.add(listener)
+      let subscribed = true
+      return () => {
+        if (!subscribed) return
+        subscribed = false
+        quitListeners.delete(listener)
+      }
+    },
+    subscribeRuntime: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: Parameters<typeof listener>[0]): void => listener(payload)
+      ipcRenderer.on(QUIETDESK_CHANNELS.runtimeContext, handler)
+      let subscribed = true
+      return () => {
+        if (!subscribed) return
+        subscribed = false
+        ipcRenderer.removeListener(QUIETDESK_CHANNELS.runtimeContext, handler)
+      }
+    }
   },
   widget: {
     getSnapshot: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.widgetSnapshot, request)

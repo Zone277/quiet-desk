@@ -19,6 +19,7 @@ interface AppProps {
 
 export function App({ windowKind }: AppProps): React.JSX.Element {
   const [state, setState] = useState<BootstrapState>({ phase: 'loading' })
+  const [refreshError, setRefreshError] = useState<string>()
   const generation = useRef(0)
   const active = useRef(true)
 
@@ -31,7 +32,8 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
       })
       if (!active.current || requestGeneration !== generation.current) return
       if (!result.ok) {
-        setState({ phase: 'error', message: ipcError(result) })
+        setRefreshError(ipcError(result))
+        setState((current) => current.phase === 'ready' ? current : { phase: 'error', message: ipcError(result) })
         return
       }
       if (result.value.windowKind !== windowKind) {
@@ -39,9 +41,11 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         return
       }
       setState({ phase: 'ready', snapshot: result.value })
+      setRefreshError(undefined)
     } catch (reason) {
       if (active.current && requestGeneration === generation.current) {
-        setState({ phase: 'error', message: unknownError(reason) })
+        setRefreshError(unknownError(reason))
+        setState((current) => current.phase === 'ready' ? current : { phase: 'error', message: unknownError(reason) })
       }
     }
   }, [windowKind])
@@ -51,11 +55,13 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
     const unsubscribe = window.quietDesk.changes.subscribe((event: ChangeEvent) => {
       if (event.topics.includes('settings')) void refreshBootstrap()
     })
+    const unsubscribeRuntime = window.quietDesk.app.subscribeRuntime(() => { void refreshBootstrap() })
     void refreshBootstrap()
     return () => {
       active.current = false
       generation.current += 1
       unsubscribe()
+      unsubscribeRuntime()
     }
   }, [refreshBootstrap])
 
@@ -118,6 +124,7 @@ export function App({ windowKind }: AppProps): React.JSX.Element {
         data-state="ready"
         data-revision={bootstrap.dataRevision}
       >
+        {refreshError ? <p className="inline-error" role="alert">{refreshError} <button type="button" onClick={() => void refreshBootstrap()}>{copy.retry}</button></p> : null}
         {windowKind === 'widget' && bootstrap.captureShortcut.failure !== null
           ? (
               <p className="inline-error shortcut-message" data-testid="shortcut-conflict" role="alert">

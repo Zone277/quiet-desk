@@ -146,6 +146,8 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   const [submitState, setSubmitState] = useState<'idle' | 'creating' | 'failed'>('idle')
   const [submitError, setSubmitError] = useState<string>()
   const [initialized, setInitialized] = useState(false)
+  const [hiding, setHiding] = useState(false)
+  const [preparingQuit, setPreparingQuit] = useState(false)
 
   const revisionRef = useRef(0)
   const editSeqRef = useRef(0)
@@ -162,8 +164,11 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   const submitInFlightRef = useRef<Promise<void> | null>(null)
   const hideInFlightRef = useRef<Promise<void> | null>(null)
   const readGenerationRef = useRef(0)
+  const editEpochRef = useRef(0)
+  const quitInFlightRef = useRef(false)
 
   const applyDraft = useCallback((draft: Draft | null): void => {
+    editEpochRef.current += 1
     const nextForm = draft ? formFromDraft(draft, bootstrap.appTimeZone) : emptyForm()
     revisionRef.current = draft?.revision ?? 0
     editSeqRef.current = 0
@@ -181,12 +186,13 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
 
   const readDraft = useCallback(async (): Promise<void> => {
     const generation = ++readGenerationRef.current
+    const epoch = editEpochRef.current
     try {
       const result = await window.quietDesk.drafts.get({
         requestId: newRequestId(),
         payload: { id: QUICK_CAPTURE_DRAFT_ID }
       })
-      if (!activeRef.current || generation !== readGenerationRef.current) return
+      if (!activeRef.current || generation !== readGenerationRef.current || epoch !== editEpochRef.current) return
       if (dirtyRef.current) {
         setSaveState('conflict')
         setSaveError(copy.draftConflict)
@@ -204,7 +210,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
       }
       applyDraft(result.value)
     } catch (reason) {
-      if (!activeRef.current || generation !== readGenerationRef.current) return
+      if (!activeRef.current || generation !== readGenerationRef.current || epoch !== editEpochRef.current) return
       setSaveState('failed')
       setSaveError(unknownError(reason))
       initializedRef.current = true
@@ -215,6 +221,11 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   const persistLatestSnapshot = useCallback((): Promise<boolean> => {
     if (!initializedRef.current || !dirtyRef.current) return Promise.resolve(true)
     if (writeInFlightRef.current) return writeInFlightRef.current
+    if (formRef.current.bodyMarkdown.length > 1_000_000) {
+      setSaveState('failed')
+      setSaveError(copy.markdownTooLong)
+      return Promise.resolve(false)
+    }
 
     const attempt = blockedSaveAttemptRef.current ?? {
       editSeq: editSeqRef.current,
@@ -246,6 +257,8 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
         }
 
         revisionRef.current = result.value.revision
+        readGenerationRef.current += 1
+        editEpochRef.current += 1
         persistedEditSeqRef.current = attempt.editSeq
         blockedSaveAttemptRef.current = undefined
         if (editSeqRef.current === attempt.editSeq) {
@@ -268,7 +281,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
 
     writeInFlightRef.current = operation
     return operation
-  }, [bootstrap.appTimeZone])
+  }, [bootstrap.appTimeZone, copy.markdownTooLong])
 
   const flushLatestDraft = useCallback(async (): Promise<boolean> => {
     while (activeRef.current && dirtyRef.current) {
@@ -276,8 +289,28 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
       if (!saved) return false
       if (persistedEditSeqRef.current >= editSeqRef.current) return true
     }
-    return true
+    return activeRef.current && initializedRef.current
   }, [persistLatestSnapshot])
+
+  const prepareQuit = useCallback(async () => {
+    quitInFlightRef.current = true
+    setPreparingQuit(true)
+    try {
+      // A successful submit removes the draft; a failed one must still leave a durable draft.
+      if (submitInFlightRef.current) await submitInFlightRef.current
+      if (hideInFlightRef.current) await hideInFlightRef.current
+      const saved = await flushLatestDraft()
+      if (!saved) setSaveError((current) => current ?? copy.quitSaveFailed)
+      return saved
+    } catch (reason) {
+      setSaveError(`${copy.quitSaveFailed}: ${unknownError(reason)}`)
+      return false
+    } finally {
+      quitInFlightRef.current = false
+      setPreparingQuit(false)
+    }
+  }, [copy.quitSaveFailed, flushLatestDraft])
+  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(prepareQuit), [prepareQuit])
 
   useEffect(() => {
     activeRef.current = true
@@ -312,7 +345,10 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   }, [flushLatestDraft, form, initialized])
 
   const updateForm = (change: Partial<CaptureForm>): void => {
+    if (quitInFlightRef.current || hideInFlightRef.current || submitInFlightRef.current) return
     const nextForm = { ...formRef.current, ...change }
+    editEpochRef.current += 1
+    readGenerationRef.current += 1
     editSeqRef.current += 1
     dirtyRef.current = true
     submitAttemptRef.current = undefined
@@ -342,20 +378,24 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
   }, [])
 
   const saveAndHide = useCallback((): Promise<void> => {
-    if (hideInFlightRef.current || submitInFlightRef.current) {
+    if (quitInFlightRef.current || hideInFlightRef.current || submitInFlightRef.current) {
       return hideInFlightRef.current ?? Promise.resolve()
     }
     const operation = (async (): Promise<void> => {
+      setHiding(true)
       setSubmitError(undefined)
       if (!await flushLatestDraft()) return
       await hideWindow()
-    })().finally(() => { hideInFlightRef.current = null })
+    })().finally(() => { hideInFlightRef.current = null; setHiding(false) })
     hideInFlightRef.current = operation
     return operation
   }, [flushLatestDraft, hideWindow])
 
   const submitDraft = useCallback((): Promise<void> => {
     if (submitInFlightRef.current) return submitInFlightRef.current
+    if (quitInFlightRef.current || hideInFlightRef.current) return hideInFlightRef.current ?? Promise.resolve()
+    readGenerationRef.current += 1
+    editEpochRef.current += 1
 
     const operation = (async (): Promise<void> => {
       setSubmitState('creating')
@@ -395,6 +435,8 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
         }
 
         const nextForm = emptyForm()
+        readGenerationRef.current += 1
+        editEpochRef.current += 1
         submitAttemptRef.current = undefined
         blockedSaveAttemptRef.current = undefined
         revisionRef.current = 0
@@ -436,7 +478,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
         : saveState === 'failed' ? copy.saveFailed
           : saveState === 'conflict' ? copy.draftConflict
             : copy.unsaved
-  const controlsDisabled = !initialized || submitState === 'creating'
+  const controlsDisabled = !initialized || submitState === 'creating' || hiding || preparingQuit
 
   return (
     <div
@@ -445,6 +487,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
       onCompositionStartCapture={() => { composingRef.current = true }}
       onCompositionEndCapture={() => { composingRef.current = false }}
     >
+      {form.bodyMarkdown.length > 1_000_000 ? <p className="inline-error" data-testid="capture-length-error" role="alert">{copy.markdownTooLong}</p> : null}
       <div className="segmented-control" data-testid="capture-kind" role="group" aria-label={copy.capture}>
         {([
           ['note', copy.note],
@@ -507,7 +550,7 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
           <p className="stage-note">{copy.captureHint}</p>
         </div>
         <div className="button-row">
-          <button type="button" className="button-ghost" data-testid="capture-close" disabled={submitState === 'creating'} onClick={() => void saveAndHide()}>{copy.close}</button>
+          <button type="button" className="button-ghost" data-testid="capture-close" disabled={controlsDisabled} onClick={() => void saveAndHide()}>{copy.close}</button>
           <button type="button" className="button-secondary" onClick={() => void flushLatestDraft()} disabled={saveState === 'saving' || controlsDisabled}>{copy.save}</button>
           <button type="button" className="button-accent" data-testid="capture-submit" disabled={controlsDisabled} onClick={() => void submitDraft()}>{submitState === 'creating' ? copy.creating : copy.create}</button>
         </div>

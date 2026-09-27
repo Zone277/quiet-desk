@@ -52,6 +52,8 @@ import { senderWindowKind, type QuietDeskWindows } from './window-registry'
 
 const IMPLEMENTED_CAPABILITIES = [
   'app.bootstrap',
+  'app.subscribeRuntime',
+  'app.subscribeQuitPreparation',
   'widget.getSnapshot',
   'library.getDay',
   'dailyLogs.get',

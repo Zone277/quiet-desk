@@ -4,6 +4,7 @@ import type { EntityRecord, OperationSnapshot, TrashEntry } from '../../shared/m
 import type { Copy } from './i18n'
 import { MarkdownView } from './MarkdownView'
 import { DailyLogPanel } from './DailyLogPanel'
+import { EntityEditor } from './EntityEditor'
 import { ShortcutSettings } from './ShortcutSettings'
 import {
   entityRevision,
@@ -62,13 +63,17 @@ function operationLabel(operation: OperationSnapshot['operation'], locale: Boots
   return (locale === 'zh-CN' ? zh : en)[operation]
 }
 
-function EntityBody({ record, bootstrap, copy }: {
+function EntityBody({ record, bootstrap, copy, onSaved, onBlockedChange }: {
   record: EntityRecord
   bootstrap: BootstrapSnapshot
   copy: Copy
+  onSaved(record: EntityRecord): void
+  onBlockedChange(blocked: boolean): void
 }): React.JSX.Element {
   const entity = record.value
   const [view, setView] = useState<'preview' | 'source'>('preview')
+  const [editing, setEditing] = useState(false)
+  if (editing) return <EntityEditor record={record} bootstrap={bootstrap} copy={copy} onSaved={(updated) => { onSaved(updated); setEditing(false) }} onCancel={() => setEditing(false)} onBlockedChange={onBlockedChange} />
   return (
     <div className="entity-detail-content">
       <div className="detail-heading">
@@ -76,6 +81,7 @@ function EntityBody({ record, bootstrap, copy }: {
         <span>{copy.revision(entity.revision)}</span>
       </div>
       <h3>{entityTitle(record, copy.untitled)}</h3>
+      <button type="button" className="button-secondary" data-testid="entity-edit-open" onClick={() => setEditing(true)}>{copy.edit}</button>
       {record.type === 'task' ? (
         <div className="item-meta detail-meta">
           {record.value.planDate ? <span>{copy.planned} · {formatDateOnly(record.value.planDate, bootstrap.locale)}</span> : null}
@@ -117,7 +123,24 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
   const dayGeneration = useRef(0)
   const selectedDateRef = useRef(selectedDate)
   const active = useRef(true)
+  const detailGeneration = useRef(0)
+  const detailTarget = useRef<{ type: EntityRecord['type']; id: string } | undefined>(undefined)
+  const editBlocked = useRef(false)
+  const followsToday = useRef(true)
+  const previousToday = useRef(bootstrap.currentDate)
   selectedDateRef.current = selectedDate
+
+  const onBlockedChange = useCallback((blocked: boolean): void => { editBlocked.current = blocked }, [])
+  const clearDetail = useCallback((): void => {
+    detailGeneration.current += 1
+    detailTarget.current = undefined
+    setSelected(undefined); setHistory([]); setDetailLoading(false)
+  }, [])
+  const canLeaveDetail = (): boolean => {
+    if (!editBlocked.current) return true
+    setActionError(copy.unsavedEdit)
+    return false
+  }
 
   const loadDay = useCallback(async (): Promise<void> => {
     const generation = ++dayGeneration.current
@@ -138,6 +161,14 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
     }
   }, [selectedDate])
 
+  useEffect(() => {
+    if (previousToday.current === bootstrap.currentDate) return
+    previousToday.current = bootstrap.currentDate
+    if (followsToday.current) setSelectedDate(bootstrap.currentDate)
+    else void loadDay()
+    setLogRefreshToken((value) => value + 1)
+  }, [bootstrap.currentDate, loadDay])
+
   const loadTrash = useCallback(async (): Promise<void> => {
     setTrash({ phase: 'loading' })
     try {
@@ -157,56 +188,69 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
       if (event.topics.some((topic) => topic === 'tasks' || topic === 'notes' || topic === 'schedules')) {
         void loadDay()
         if (mode === 'trash') void loadTrash()
+        const target = detailTarget.current
+        if (target && event.entityRefs.some((entity) => entity.type === target.type && entity.id === target.id)) {
+          void loadEntity(target.type, target.id, true)
+        }
       }
     })
     void loadDay()
     return () => {
       active.current = false
       dayGeneration.current += 1
+      detailGeneration.current += 1
       unsubscribe()
     }
   }, [loadDay, loadTrash, mode])
 
   useEffect(() => window.quietDesk.windows.subscribeContext((context) => {
     if (context.target !== 'library') return
+    if (editBlocked.current) { setActionError(copy.unsavedEdit); return }
     setMode('day')
-    setSelected(undefined)
-    setHistory([])
+    clearDetail()
+    followsToday.current = context.selectedDate === previousToday.current
     setSelectedDate(context.selectedDate)
-  }), [])
+  }), [clearDetail, copy.unsavedEdit])
 
   const changeMode = (next: 'day' | 'trash'): void => {
+    if (!canLeaveDetail()) return
     setMode(next)
-    setSelected(undefined)
-    setHistory([])
+    clearDetail()
     setActionError(undefined)
     if (next === 'trash') void loadTrash()
   }
 
-  const loadEntity = async (type: EntityRecord['type'], id: string): Promise<void> => {
-    setDetailLoading(true)
-    setActionError(undefined)
+  const loadEntity = async (type: EntityRecord['type'], id: string, refresh = false): Promise<void> => {
+    if (!refresh && !canLeaveDetail()) return
+    const generation = ++detailGeneration.current
+    detailTarget.current = { type, id }
+    if (!refresh) { setSelected(undefined); setHistory([]); setDetailLoading(true); setActionError(undefined) }
     try {
       const reference = { type, id }
       const [entityResult, historyResult] = await Promise.all([
         window.quietDesk.library.getEntity({ requestId: newRequestId(), payload: reference }),
         window.quietDesk.library.getHistory({ requestId: newRequestId(), payload: reference })
       ])
+      if (!active.current || generation !== detailGeneration.current) return
       if (!entityResult.ok) {
+        // Do not keep body text from a deleted/missing entity after invalidation.
+        if (entityResult.error.code === 'NOT_FOUND' || !refresh) clearDetail()
         setActionError(ipcError(entityResult))
         return
       }
+      if (entityResult.value.value.deletedAtUtc !== null) { clearDetail(); return }
       setSelected(entityResult.value)
       setHistory(historyResult.ok ? historyResult.value : [])
       if (!historyResult.ok) setActionError(ipcError(historyResult))
     } catch (reason) {
-      setActionError(unknownError(reason))
+      if (active.current && generation === detailGeneration.current) setActionError(unknownError(reason))
     } finally {
-      setDetailLoading(false)
+      if (active.current && generation === detailGeneration.current) setDetailLoading(false)
     }
   }
 
   const moveToTrash = async (record: EntityRecord): Promise<void> => {
+    if (!canLeaveDetail()) return
     setPendingId(record.value.id)
     setActionError(undefined)
     try {
@@ -220,8 +264,7 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
       })
       if (!result.ok) setActionError(ipcError(result))
       else {
-        setSelected(undefined)
-        setHistory([])
+        clearDetail()
         setLogRefreshToken((value) => value + 1)
         await Promise.all([loadTrash(), loadDay()])
       }
@@ -294,6 +337,28 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
     }
   }
 
+  const changeDate = (date: string, follow = false): void => {
+    if (!canLeaveDetail()) return
+    followsToday.current = follow
+    clearDetail(); setSelectedDate(date)
+  }
+  const onSaved = (record: EntityRecord): void => {
+    const target = detailTarget.current
+    if (!target || target.id !== record.value.id || target.type !== record.type) return
+    setSelected(record)
+    void loadEntity(record.type, record.value.id, true)
+    void loadDay(); setLogRefreshToken((value) => value + 1)
+  }
+  const reopen = async (record: EntityRecord): Promise<void> => {
+    if (record.type !== 'task' || !record.value.completedAtUtc || !canLeaveDetail() || pendingId) return
+    setPendingId(record.value.id); setActionError(undefined)
+    try {
+      const result = await window.quietDesk.tasks.setCompletion({ requestId: newRequestId(), idempotencyKey: newRequestId(), payload: { id: record.value.id, expectedRevision: record.value.revision, action: 'reopen' } })
+      if (!result.ok) setActionError(ipcError(result))
+      else onSaved({ type: 'task', value: result.value })
+    } catch (reason) { setActionError(unknownError(reason)) } finally { setPendingId(undefined) }
+  }
+
   return (
     <div className="library-layout">
       <nav className="library-toolbar" aria-label={copy.library}>
@@ -303,10 +368,10 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
         </div>
         {mode === 'day' ? (
           <div className="date-browser">
-            <button type="button" className="icon-button" data-testid="library-prev-date" aria-label={copy.previousDate} onClick={() => setSelectedDate(nextDate(selectedDate, -1))}>‹</button>
-            <input data-testid="library-date" aria-label={copy.browseDate} type="date" value={selectedDate} onChange={(event) => { if (event.target.value) setSelectedDate(event.target.value) }} />
-            <button type="button" className="icon-button" data-testid="library-next-date" aria-label={copy.nextDate} onClick={() => setSelectedDate(nextDate(selectedDate, 1))}>›</button>
-            <button type="button" className="text-button" data-testid="library-today" onClick={() => setSelectedDate(bootstrap.currentDate)}>{copy.today}</button>
+            <button type="button" className="icon-button" data-testid="library-prev-date" aria-label={copy.previousDate} onClick={() => changeDate(nextDate(selectedDate, -1))}>‹</button>
+            <input data-testid="library-date" aria-label={copy.browseDate} type="date" value={selectedDate} onChange={(event) => { if (event.target.value) changeDate(event.target.value) }} />
+            <button type="button" className="icon-button" data-testid="library-next-date" aria-label={copy.nextDate} onClick={() => changeDate(nextDate(selectedDate, 1))}>›</button>
+            <button type="button" className="text-button" data-testid="library-today" onClick={() => changeDate(bootstrap.currentDate, true)}>{copy.today}</button>
           </div>
         ) : null}
         <button type="button" className="button-ghost close-library" onClick={() => void hide()}>{copy.close}</button>
@@ -387,7 +452,8 @@ export function LibraryView({ bootstrap, copy }: LibraryViewProps): React.JSX.El
           <aside className="detail-column section-card" aria-label={copy.itemDetails}>
             {detailLoading ? <p>{copy.loading}</p> : selected ? (
               <>
-                <EntityBody key={`${selected.type}:${selected.value.id}`} record={selected} bootstrap={bootstrap} copy={copy} />
+                <EntityBody key={`${selected.type}:${selected.value.id}`} record={selected} bootstrap={bootstrap} copy={copy} onSaved={onSaved} onBlockedChange={onBlockedChange} />
+                {selected.type === 'task' && selected.value.completedAtUtc ? <button type="button" className="button-secondary" data-testid="entity-task-reopen" disabled={pendingId === selected.value.id} onClick={() => void reopen(selected)}>{copy.reopen}</button> : null}
                 <button
                   type="button"
                   className="danger-button"

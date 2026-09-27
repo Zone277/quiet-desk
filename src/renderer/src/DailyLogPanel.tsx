@@ -66,6 +66,7 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
   const activeDate = useRef(date)
   const mounted = useRef(true)
   const [manualView, setManualView] = useState<'source' | 'preview'>('source')
+  const [quitError, setQuitError] = useState<string>()
   activeDate.current = date
 
   const update = useCallback((targetDate: string, transform: (current: LogState) => LogState): void => {
@@ -153,6 +154,7 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
           }))
           return false
         }
+        generations.current[targetDate] = (generations.current[targetDate] ?? 0) + 1
         update(targetDate, (state) => {
           const editedAgain = state.editVersion !== version
           const manual = editedAgain ? state.manual : result.value.manualMarkdown
@@ -173,6 +175,21 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
     saving.current[targetDate] = task
     try { return await task } finally { delete saving.current[targetDate] }
   }
+
+  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(async () => {
+    setQuitError(undefined)
+    // Include cached dates, not just the date currently visible in Library.
+    for (;;) {
+      const dirtyDates = Object.keys(statesRef.current).filter((key) => statesRef.current[key]?.dirty)
+      if (dirtyDates.length === 0) return mounted.current
+      for (const targetDate of dirtyDates) {
+        if (!mounted.current || !await saveManual(targetDate)) {
+          setQuitError(`${targetDate}: ${copy.quitSaveFailed}`)
+          return false
+        }
+      }
+    }
+  }))
 
   const exportLog = async (): Promise<void> => {
     const targetDate = date
@@ -215,6 +232,7 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
   const canInteract = state.phase === 'ready' && !!state.log
   return (
     <section className="section-card daily-log-panel" aria-label={copy.dailyLog} data-testid="daily-log-panel">
+      {quitError ? <p className="inline-error" role="alert" data-testid="daily-log-quit-error">{quitError}</p> : null}
       <header className="section-heading daily-log-heading">
         <div><p className="eyebrow">{copy.dailyLog}</p><h3>{formatDateOnly(date, locale)}</h3></div>
         <button type="button" className="icon-button" aria-label={copy.refresh} onClick={() => void load(date)}>↻</button>

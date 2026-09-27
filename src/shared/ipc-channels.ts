@@ -2,6 +2,9 @@ export const IPC_CONTRACT_VERSION = 4 as const
 
 export const QUIETDESK_CHANNELS = {
   bootstrap: 'quietdesk:v2:bootstrap',
+  runtimeContext: 'quietdesk:v4:app:runtime-context',
+  prepareQuit: 'quietdesk:v4:app:prepare-quit',
+  quitPrepared: 'quietdesk:v4:app:quit-prepared',
   widgetSnapshot: 'quietdesk:v2:widget:snapshot',
   daySnapshot: 'quietdesk:v2:library:day',
   dailyLog: 'quietdesk:v4:daily-logs:get',

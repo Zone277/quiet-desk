@@ -8,7 +8,7 @@ import { _electron as electron } from 'playwright'
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 export const apiAllowlist = Object.freeze({
-  app: ['bootstrap'],
+  app: ['bootstrap', 'subscribeQuitPreparation', 'subscribeRuntime'],
   changes: ['subscribe'],
   dailyLogs: ['export', 'get', 'saveManual'],
   drafts: ['get', 'save', 'submit'],

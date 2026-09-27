@@ -1,4 +1,4 @@
-import { app, globalShortcut, nativeTheme, powerMonitor, shell } from 'electron'
+import { app, dialog, globalShortcut, nativeTheme, powerMonitor, shell } from 'electron'
 import { isAbsolute, resolve } from 'node:path'
 import { FixedClock, SystemClock, type Clock } from '../shared/clock'
 import { defaultCaptureShortcut, type CreateNoteRequest } from '../shared/ipc-contract'
@@ -15,6 +15,9 @@ import {
 } from './windows/capture-window-controller'
 import { createDesktopSpikeWindow, type DesktopSpikeController } from './windows/desktop-spike-window'
 import { createQuietDeskTray } from './tray'
+import { createRuntimeRefresh } from './runtime-refresh'
+import { QUIETDESK_CHANNELS } from '../shared/ipc-channels'
+import { createQuitPreparation } from './ipc/quit-preparation'
 
 const STORAGE_SMOKE_NOTE_ID = '20000000-0000-4000-8000-000000000001'
 const STORAGE_SMOKE_KEY = '20000000-0000-4000-8000-000000000002'
@@ -30,6 +33,11 @@ let testOccupiedShortcut: string | undefined
 let residentTray: ReturnType<typeof createQuietDeskTray> | undefined
 let quitting = false
 let cleanupComplete = false
+let runtimeRefresh: ReturnType<typeof createRuntimeRefresh> | undefined
+let quitPreparation: ReturnType<typeof createQuitPreparation> | undefined
+let preparingQuit = false
+const onRuntimeResume = (): void => runtimeRefresh?.refresh(true)
+const onNativeThemeUpdated = (): void => runtimeRefresh?.refresh()
 
 function configureUserDataPath(): void {
   const requestedUserData = process.env.QUIETDESK_TEST_USER_DATA
@@ -131,13 +139,6 @@ app.whenReady().then(async () => {
   storage = new CoreDataService({ databasePath, clock })
   const appTimeZone = storage.getOrCreateAppTimeZone(systemTimeZone())
   storage.reconcileActiveDailyLogs()
-  powerMonitor.on('resume', () => {
-    try {
-      storage?.reconcileActiveDailyLogs()
-    } catch (error) {
-      console.error('QUIETDESK_DAILY_LOG_RESUME_ERROR', error)
-    }
-  })
   const preloadPath = resolve(__dirname, '../preload/index.js')
   const rendererDirectory = resolve(__dirname, '../renderer')
   const rendererUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL
@@ -253,6 +254,21 @@ app.whenReady().then(async () => {
     captureShortcutManager.register()
     resolveShortcutManager(captureShortcutManager)
     resolveWindows({ widget: widgetController.window, capture, library })
+    quitPreparation = createQuitPreparation({ widget: widgetController.window, capture, library })
+    runtimeRefresh = createRuntimeRefresh({ clock, timeZone: appTimeZone,
+      resolvedTheme: () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
+      reconcile: () => {
+        try { storage?.reconcileActiveDailyLogs() }
+        catch (error) { console.error('QUIETDESK_DAILY_LOG_RESUME_ERROR', error) }
+      },
+      notify: (context) => {
+        for (const window of [widgetController.window, capture, library]) {
+          if (!window.isDestroyed()) window.webContents.send(QUIETDESK_CHANNELS.runtimeContext, context)
+        }
+      }
+    })
+    powerMonitor.on('resume', onRuntimeResume)
+    nativeTheme.on('updated', onNativeThemeUpdated)
     residentTray = createQuietDeskTray({ widget: widgetController.window, capture, library },
       () => storage?.getOrCreateAppearance(detectLocale()).locale ?? detectLocale())
   } catch (error) {
@@ -274,8 +290,23 @@ app.whenReady().then(async () => {
 app.on('before-quit', (event) => {
   if (cleanupComplete) return
   event.preventDefault()
-  if (quitting) return
+  if (quitting || preparingQuit) return
+  preparingQuit = true
+  void (async () => {
+  const ready = await quitPreparation?.prepare() ?? true
+  preparingQuit = false
+  if (!ready) {
+    await dialog.showMessageBox({ type: 'error', title: 'QuietDesk',
+      message: '输入或手写补充未能保存，应用未退出。请返回重试。 / Unsaved content could not be saved. QuietDesk remains open; return and retry.' })
+    return
+  }
   quitting = true
+  quitPreparation?.dispose()
+  quitPreparation = undefined
+  runtimeRefresh?.dispose()
+  runtimeRefresh = undefined
+  powerMonitor.off('resume', onRuntimeResume)
+  nativeTheme.off('updated', onNativeThemeUpdated)
   residentTray?.dispose()
   residentTray = undefined
   captureShortcutManager?.dispose()
@@ -286,7 +317,6 @@ app.on('before-quit', (event) => {
   captureWindowController = undefined
   unregisterQuietDeskIpc?.()
   unregisterQuietDeskIpc = undefined
-  void (async () => {
     try {
       await controller?.dispose()
     } catch (error) {
@@ -297,7 +327,10 @@ app.on('before-quit', (event) => {
       cleanupComplete = true
       app.quit()
     }
-  })()
+  })().catch((error: unknown) => {
+    preparingQuit = false
+    console.error('QUIETDESK_QUIT_PREPARATION_ERROR', error)
+  })
 })
 
 app.on('window-all-closed', () => {

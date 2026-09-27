@@ -6,23 +6,33 @@ import { unknownError } from './ui-utils'
 export function HostBadge({ copy }: { copy: Copy }): React.JSX.Element {
   const [status, setStatus] = useState<DesktopHostStatus>()
   const [error, setError] = useState<string>()
-  const requested = useRef(false)
+  const generation = useRef(0)
+  const active = useRef(true)
 
   const read = useCallback(async (retry = false): Promise<void> => {
+    const requestGeneration = ++generation.current
     try {
-      setStatus(retry
+      const next = retry
         ? await window.quietDeskDesktopSpike.retryHost()
-        : await window.quietDeskDesktopSpike.getStatus())
+        : await window.quietDeskDesktopSpike.getStatus()
+      if (!active.current || requestGeneration !== generation.current) return
+      setStatus(next)
       setError(undefined)
     } catch (reason) {
+      if (!active.current || requestGeneration !== generation.current) return
       setError(unknownError(reason))
     }
   }, [])
 
   useEffect(() => {
-    if (requested.current) return
-    requested.current = true
+    active.current = true
     void read()
+    const timer = window.setInterval(() => { void read() }, 10_000)
+    return () => {
+      active.current = false
+      generation.current += 1
+      window.clearInterval(timer)
+    }
   }, [read])
 
   const label = status?.mode === 'desktop'
