@@ -67,6 +67,8 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
   const mounted = useRef(true)
   const [manualView, setManualView] = useState<'source' | 'preview'>('source')
   const [quitError, setQuitError] = useState<string>()
+  const [quitLocked, setQuitLocked] = useState(false)
+  const quitLockedRef = useRef(false)
   activeDate.current = date
 
   const update = useCallback((targetDate: string, transform: (current: LogState) => LogState): void => {
@@ -128,7 +130,7 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
     return unsubscribe
   }, [load])
 
-  const saveManual = async (targetDate: DateOnly): Promise<boolean> => {
+  const saveManual = useCallback(async (targetDate: DateOnly): Promise<boolean> => {
     const inFlight = saving.current[targetDate]
     if (inFlight) {
       if (!await inFlight) return false
@@ -174,9 +176,11 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
     })()
     saving.current[targetDate] = task
     try { return await task } finally { delete saving.current[targetDate] }
-  }
+  }, [update])
 
-  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(async () => {
+  const prepareQuit = useCallback(async () => {
+    quitLockedRef.current = true
+    setQuitLocked(true)
     setQuitError(undefined)
     // Include cached dates, not just the date currently visible in Library.
     for (;;) {
@@ -189,9 +193,15 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
         }
       }
     }
-  }))
+  }, [saveManual, copy.quitSaveFailed])
+  const cancelQuit = useCallback(() => {
+    quitLockedRef.current = false
+    setQuitLocked(false)
+  }, [])
+  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(prepareQuit, cancelQuit), [prepareQuit, cancelQuit])
 
   const exportLog = async (): Promise<void> => {
+    if (quitLockedRef.current) return
     const targetDate = date
     if (statesRef.current[targetDate]?.exportPhase === 'exporting') return
     update(targetDate, (current) => ({ ...current, exportPhase: 'exporting', exportError: undefined }))
@@ -218,6 +228,7 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
   }
 
   const useMyText = async (): Promise<void> => {
+    if (quitLockedRef.current) return
     const targetDate = date
     const latest = await load(targetDate)
     if (!latest) return
@@ -235,25 +246,26 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
       {quitError ? <p className="inline-error" role="alert" data-testid="daily-log-quit-error">{quitError}</p> : null}
       <header className="section-heading daily-log-heading">
         <div><p className="eyebrow">{copy.dailyLog}</p><h3>{formatDateOnly(date, locale)}</h3></div>
-        <button type="button" className="icon-button" aria-label={copy.refresh} onClick={() => void load(date)}>↻</button>
+        <button type="button" className="icon-button" aria-label={copy.refresh} disabled={quitLocked} onClick={() => { if (!quitLockedRef.current) void load(date) }}>↻</button>
       </header>
       {state.phase === 'loading' ? <p>{copy.loading}</p> : null}
-      {state.loadError ? <p className="inline-error" role="alert">{state.loadError} <button type="button" onClick={() => void load(date)}>{copy.retry}</button></p> : null}
+      {state.loadError ? <p className="inline-error" role="alert">{state.loadError} <button type="button" disabled={quitLocked} onClick={() => { if (!quitLockedRef.current) void load(date) }}>{copy.retry}</button></p> : null}
       {canInteract && state.log ? <DailyLogSections log={state.log} copy={copy} /> : null}
       {canInteract ? (
         <section className="daily-log-manual">
           <div className="section-heading">
             <h4>{copy.logManual}</h4>
             <div className="view-toggle" role="group" aria-label={copy.markdownViewMode}>
-              <button type="button" className={manualView === 'source' ? 'active' : undefined} aria-pressed={manualView === 'source'} onClick={() => setManualView('source')}>{copy.source}</button>
-              <button type="button" className={manualView === 'preview' ? 'active' : undefined} aria-pressed={manualView === 'preview'} onClick={() => setManualView('preview')}>{copy.preview}</button>
+              <button type="button" className={manualView === 'source' ? 'active' : undefined} aria-pressed={manualView === 'source'} disabled={quitLocked} onClick={() => setManualView('source')}>{copy.source}</button>
+              <button type="button" className={manualView === 'preview' ? 'active' : undefined} aria-pressed={manualView === 'preview'} disabled={quitLocked} onClick={() => setManualView('preview')}>{copy.preview}</button>
             </div>
           </div>
           {manualView === 'source' ? (
             <textarea
               data-testid="daily-log-manual-input" aria-label={copy.logManual}
-              value={state.manual} maxLength={1_000_000} disabled={state.exportPhase === 'exporting'}
+              value={state.manual} maxLength={1_000_000} disabled={quitLocked || state.exportPhase === 'exporting'}
               onChange={(event) => {
+                if (quitLockedRef.current) return
                 const manual = event.target.value
                 update(date, (current) => ({
                   ...current, manual, editVersion: current.editVersion + 1,
@@ -269,11 +281,11 @@ export function DailyLogPanel({ date, locale, copy, refreshToken }: {
             <span className="daily-log-save-status" role="status">
               {state.savePhase === 'saving' ? copy.saving : state.savePhase === 'saved' ? copy.saved : state.dirty ? copy.unsaved : ''}
             </span>
-            <button type="button" className="button-secondary" disabled={!state.dirty || state.savePhase === 'saving' || state.savePhase === 'conflict'} onClick={() => void saveManual(date)}>{copy.save}</button>
-            <button type="button" className="button-accent" data-testid="daily-log-export" disabled={state.exportPhase === 'exporting' || state.savePhase === 'conflict'} onClick={() => void exportLog()}>{state.exportPhase === 'exporting' ? copy.logExporting : copy.logExport}</button>
+            <button type="button" className="button-secondary" disabled={quitLocked || !state.dirty || state.savePhase === 'saving' || state.savePhase === 'conflict'} onClick={() => { if (!quitLockedRef.current) void saveManual(date) }}>{copy.save}</button>
+            <button type="button" className="button-accent" data-testid="daily-log-export" disabled={quitLocked || state.exportPhase === 'exporting' || state.savePhase === 'conflict'} onClick={() => void exportLog()}>{state.exportPhase === 'exporting' ? copy.logExporting : copy.logExport}</button>
           </div>
           {state.saveError ? <p className="inline-error" role="alert">{state.savePhase === 'conflict' ? copy.logConflict : copy.saveFailed}: {state.saveError}</p> : null}
-          {state.savePhase === 'conflict' ? <button type="button" className="button-secondary" onClick={() => void useMyText()}>{copy.logUseMyText}</button> : null}
+          {state.savePhase === 'conflict' ? <button type="button" className="button-secondary" disabled={quitLocked} onClick={() => void useMyText()}>{copy.logUseMyText}</button> : null}
           {state.exportPhase === 'saved' ? <p role="status">{copy.logExportSaved}</p> : null}
           {state.exportPhase === 'cancelled' ? <p role="status">{copy.logExportCancelled}</p> : null}
           {state.exportError ? <p className="inline-error" role="alert">{copy.logExportFailed}: {state.exportError}</p> : null}

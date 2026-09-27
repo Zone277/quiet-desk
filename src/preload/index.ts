@@ -3,13 +3,23 @@ import { DESKTOP_SPIKE_CHANNELS, type DesktopSpikeApi } from '../shared/desktop-
 import { QUIETDESK_CHANNELS } from '../shared/ipc-channels'
 import type { ChangeEvent, QuietDeskApi, WindowOpenContext } from '../shared/ipc-contract'
 
-const quitListeners = new Set<() => Promise<boolean>>()
+const quitListeners = new Map<() => Promise<boolean>, (() => void) | undefined>()
+let activeQuitToken: string | undefined
 ipcRenderer.on(QUIETDESK_CHANNELS.prepareQuit, async (_event: Electron.IpcRendererEvent, token: unknown) => {
   if (typeof token !== 'string' || !/^[0-9a-f-]{36}$/iu.test(token)) return
-  const results = await Promise.all([...quitListeners].map(async (listener) => {
+  activeQuitToken = token
+  // Freeze the whole document, including controls mounted after an early ready.
+  if (typeof document !== 'undefined') document.documentElement.inert = true
+  const results = await Promise.all([...quitListeners.keys()].map(async (listener) => {
     try { return await listener() === true } catch { return false }
   }))
-  ipcRenderer.send(QUIETDESK_CHANNELS.quitPrepared, { token, ready: results.every(Boolean) })
+  if (activeQuitToken === token) ipcRenderer.send(QUIETDESK_CHANNELS.quitPrepared, { token, ready: results.every(Boolean) })
+})
+ipcRenderer.on(QUIETDESK_CHANNELS.cancelQuit, (_event: Electron.IpcRendererEvent, token: unknown) => {
+  if (token !== activeQuitToken || activeQuitToken === undefined) return
+  activeQuitToken = undefined
+  if (typeof document !== 'undefined') document.documentElement.inert = false
+  for (const cancel of quitListeners.values()) { try { cancel?.() } catch { /* Continue unlocking peers. */ } }
 })
 
 const desktopSpikeApi: DesktopSpikeApi = Object.freeze({
@@ -20,8 +30,8 @@ const desktopSpikeApi: DesktopSpikeApi = Object.freeze({
 const quietDeskApi: QuietDeskApi = {
   app: {
     bootstrap: (request) => ipcRenderer.invoke(QUIETDESK_CHANNELS.bootstrap, request),
-    subscribeQuitPreparation: (listener) => {
-      quitListeners.add(listener)
+    subscribeQuitPreparation: (listener, onCancelled) => {
+      quitListeners.set(listener, onCancelled)
       let subscribed = true
       return () => {
         if (!subscribed) return

@@ -29,6 +29,8 @@ export function EntityEditor({ record, bootstrap, copy, onSaved, onCancel, onBlo
   const [saving, setSaving] = useState(false)
   const inFlight = useRef(false)
   const active = useRef(true)
+  const [quitLocked, setQuitLocked] = useState(false)
+  const quitLockedRef = useRef(false)
   const [error, setError] = useState<string>()
   const retry = useRef<{ signature: string; key: string } | undefined>(undefined)
   const dirty = JSON.stringify(form) !== JSON.stringify(original.current)
@@ -40,13 +42,20 @@ export function EntityEditor({ record, bootstrap, copy, onSaved, onCancel, onBlo
     return () => { active.current = false; onBlockedChange(false) }
   }, [onBlockedChange])
   useEffect(() => window.quietDesk.app.subscribeQuitPreparation(async () => {
+    quitLockedRef.current = true
+    setQuitLocked(true)
+    onBlockedChange(true)
     if (!dirtyRef.current && !inFlight.current) return true
     setError(copy.unsavedEdit)
     return false
-  }), [copy.unsavedEdit])
+  }, () => {
+    quitLockedRef.current = false
+    setQuitLocked(false)
+    onBlockedChange(dirtyRef.current || inFlight.current)
+  }), [copy.unsavedEdit, onBlockedChange])
 
   const change = (patch: Partial<EditForm>): void => {
-    if (inFlight.current) return
+    if (quitLockedRef.current || inFlight.current) return
     const next = { ...formRef.current, ...patch }
     formRef.current = next
     dirtyRef.current = JSON.stringify(next) !== JSON.stringify(original.current)
@@ -54,7 +63,7 @@ export function EntityEditor({ record, bootstrap, copy, onSaved, onCancel, onBlo
     setForm(next); setError(undefined)
   }
   const save = async (): Promise<void> => {
-    if (inFlight.current) return
+    if (quitLockedRef.current || inFlight.current) return
     const current = formRef.current
     const target = base.current
     if (current.bodyMarkdown.length > 1_000_000) { setError(copy.markdownTooLong); return }
@@ -101,31 +110,32 @@ export function EntityEditor({ record, bootstrap, copy, onSaved, onCancel, onBlo
         if (!result.ok) { setError(ipcError(result)); return }
         updated = { type: 'schedule', value: result.value }
       }
-      if (active.current) { dirtyRef.current = false; onBlockedChange(false); onSaved(updated) }
+      if (active.current) { dirtyRef.current = false; onBlockedChange(quitLockedRef.current); onSaved(updated) }
     } catch (reason) {
       if (active.current) setError(unknownError(reason))
     } finally {
       inFlight.current = false
-      if (active.current) { setSaving(false); onBlockedChange(dirtyRef.current) }
+      if (active.current) { setSaving(false); onBlockedChange(quitLockedRef.current || dirtyRef.current) }
     }
   }
 
+  const disabled = saving || quitLocked
   return <section className="entity-editor" aria-label={copy.edit}>
-    <label className="field-control"><span>{copy.title}</span><input data-testid="entity-edit-title" value={form.title} maxLength={500} disabled={saving} onChange={(event) => change({ title: event.target.value })} /></label>
-    <label className="field-control"><span>{copy.details}</span><textarea data-testid="entity-edit-body" value={form.bodyMarkdown} rows={8} disabled={saving} onChange={(event) => change({ bodyMarkdown: event.target.value })} /></label>
+    <label className="field-control"><span>{copy.title}</span><input data-testid="entity-edit-title" value={form.title} maxLength={500} disabled={disabled} onChange={(event) => change({ title: event.target.value })} /></label>
+    <label className="field-control"><span>{copy.details}</span><textarea data-testid="entity-edit-body" value={form.bodyMarkdown} rows={8} disabled={disabled} onChange={(event) => change({ bodyMarkdown: event.target.value })} /></label>
     {base.current.type === 'task' ? <div className="field-grid two-columns">
-      <label className="field-control"><span>{copy.planDate}</span><input data-testid="entity-edit-plan-date" type="date" value={form.planDate} disabled={saving} onChange={(event) => change({ planDate: event.target.value })} /></label>
-      <label className="field-control"><span>{copy.dueDate}</span><input data-testid="entity-edit-due-date" type="date" value={form.dueDate} disabled={saving} onChange={(event) => change({ dueDate: event.target.value })} /></label>
+      <label className="field-control"><span>{copy.planDate}</span><input data-testid="entity-edit-plan-date" type="date" value={form.planDate} disabled={disabled} onChange={(event) => change({ planDate: event.target.value })} /></label>
+      <label className="field-control"><span>{copy.dueDate}</span><input data-testid="entity-edit-due-date" type="date" value={form.dueDate} disabled={disabled} onChange={(event) => change({ dueDate: event.target.value })} /></label>
     </div> : null}
     {base.current.type === 'schedule' ? <div className="field-grid two-columns">
-      <label className="field-control"><span>{copy.start}</span><input data-testid="entity-edit-start" type={base.current.value.kind === 'all-day' ? 'date' : 'datetime-local'} value={form.start} disabled={saving} onChange={(event) => change({ start: event.target.value })} /></label>
-      <label className="field-control"><span>{base.current.value.kind === 'all-day' ? copy.endExclusive : copy.end}</span><input data-testid="entity-edit-end" type={base.current.value.kind === 'all-day' ? 'date' : 'datetime-local'} value={form.end} disabled={saving} onChange={(event) => change({ end: event.target.value })} /></label>
+      <label className="field-control"><span>{copy.start}</span><input data-testid="entity-edit-start" type={base.current.value.kind === 'all-day' ? 'date' : 'datetime-local'} value={form.start} disabled={disabled} onChange={(event) => change({ start: event.target.value })} /></label>
+      <label className="field-control"><span>{base.current.value.kind === 'all-day' ? copy.endExclusive : copy.end}</span><input data-testid="entity-edit-end" type={base.current.value.kind === 'all-day' ? 'date' : 'datetime-local'} value={form.end} disabled={disabled} onChange={(event) => change({ end: event.target.value })} /></label>
       {base.current.value.kind === 'timed' ? <p className="field-hint full-column">{copy.scheduleTimeZoneHint(bootstrap.appTimeZone)}</p> : null}
     </div> : null}
     {error ? <p className="inline-error" data-testid="entity-edit-error" role="alert">{error}</p> : null}
     <div className="button-row">
-      <button type="button" className="button-secondary" data-testid="entity-edit-cancel" disabled={saving} onClick={() => { dirtyRef.current = false; onBlockedChange(false); onCancel() }}>{copy.cancel}</button>
-      <button type="button" className="button-accent" data-testid="entity-edit-save" disabled={saving} onClick={() => void save()}>{saving ? copy.saving : copy.saveChanges}</button>
+      <button type="button" className="button-secondary" data-testid="entity-edit-cancel" disabled={disabled} onClick={() => { if (quitLockedRef.current || inFlight.current) return; dirtyRef.current = false; onBlockedChange(false); onCancel() }}>{copy.cancel}</button>
+      <button type="button" className="button-accent" data-testid="entity-edit-save" disabled={disabled} onClick={() => void save()}>{saving ? copy.saving : copy.saveChanges}</button>
     </div>
   </section>
 }

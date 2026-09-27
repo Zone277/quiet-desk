@@ -46,8 +46,13 @@ test('failed save and no-ack timeout block exit instead of destroying input', as
   state.ipc.emit(QUIETDESK_CHANNELS.quitPrepared, { sender: windows.capture.webContents,
     senderFrame: windows.capture.webContents.mainFrame }, { token, ready: false })
   await expect(failed).resolves.toBe(false)
+  for (const window of [windows.capture, windows.library]) {
+    expect(window.webContents.send).toHaveBeenCalledWith(QUIETDESK_CHANNELS.cancelQuit, token)
+  }
   const timeout = controller.prepare()
+  const timedToken = vi.mocked(windows.capture.webContents.send).mock.calls.at(-1)![1]
   vi.advanceTimersByTime(10_000)
   await expect(timeout).resolves.toBe(false)
+  expect(windows.capture.webContents.send).toHaveBeenCalledWith(QUIETDESK_CHANNELS.cancelQuit, timedToken)
   controller.dispose()
 })

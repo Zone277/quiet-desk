@@ -5,6 +5,7 @@ export const QUIETDESK_CHANNELS = {
   runtimeContext: 'quietdesk:v4:app:runtime-context',
   prepareQuit: 'quietdesk:v4:app:prepare-quit',
   quitPrepared: 'quietdesk:v4:app:quit-prepared',
+  cancelQuit: 'quietdesk:v4:app:cancel-quit',
   widgetSnapshot: 'quietdesk:v2:widget:snapshot',
   daySnapshot: 'quietdesk:v2:library:day',
   dailyLog: 'quietdesk:v4:daily-logs:get',

@@ -87,6 +87,7 @@ const ok = (value: unknown) => ({ ok: true, requestId: crypto.randomUUID(), valu
 const log = (date: string) => ({ id: note.value.id, logDate: date, manualMarkdown: '', manualRevision: 0, autoItems: [] })
 let api: QuietDeskApi
 let quit: (() => Promise<boolean>) | undefined
+let cancelQuit: (() => void) | undefined
 let runtime: (() => void) | undefined
 let changed: ((event: ChangeEvent) => void) | undefined
 function deferred<T>() {
@@ -95,10 +96,10 @@ function deferred<T>() {
   return { promise, resolve }
 }
 beforeEach(() => {
-  quit = undefined; runtime = undefined
+  quit = undefined; cancelQuit = undefined; runtime = undefined
   api = {
     app: { bootstrap: vi.fn(async () => ok(bootstrap)), subscribeRuntime: vi.fn((listener) => { runtime = listener; return vi.fn() }),
-      subscribeQuitPreparation: vi.fn((listener) => { quit = listener; return vi.fn() }) },
+      subscribeQuitPreparation: vi.fn((listener, onCancelled?: () => void) => { quit = listener; cancelQuit = onCancelled; return vi.fn() }) },
     changes: { subscribe: vi.fn((listener) => { changed = listener; return vi.fn() }) }, windows: { subscribeContext: vi.fn(() => vi.fn()), hide: vi.fn(async () => ok({})) },
     library: { getDay: vi.fn(async () => ok({ selectedDate: bootstrap.currentDate, tasks: [], schedules: [], notes: [{ note: note.value }] })),
       getEntity: vi.fn(async () => ok(note)), getHistory: vi.fn(async () => ok([])) },
@@ -148,6 +149,7 @@ describe('Stage7 renderer regressions (unit boundary only)', () => {
     ;(find(view.render(), 'capture-body').props.onChange as (event: unknown) => void)({ target: { value: 'Latest input' } })
     expect(quit).toBeTypeOf('function'); expect(await quit!()).toBe(true)
     expect(api.drafts.save).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ payload: expect.objectContaining({ bodyMarkdown: 'Latest input' }) }) }))
+    cancelQuit!() // Main cancels the aggregated attempt because another participant did not ACK.
     vi.mocked(api.drafts.save).mockResolvedValueOnce({ ok: false, requestId: crypto.randomUUID(), error: { code: 'STORAGE_ERROR', message: 'locked', retryable: true } })
     ;(find(view.render(), 'capture-body').props.onChange as (event: unknown) => void)({ target: { value: 'Retain on failure' } })
     expect(await quit!()).toBe(false)
@@ -265,6 +267,7 @@ describe('Stage7 renderer regressions (unit boundary only)', () => {
     vi.mocked(api.dailyLogs.saveManual).mockResolvedValue({ ok: false, requestId: crypto.randomUUID(), error: { code: 'CONFLICT', message: 'revision', retryable: true } })
     expect(await quit!()).toBe(false)
     find(view.render(), 'daily-log-quit-error')
+    expect(find(view.render(), 'daily-log-manual-input').props.disabled).toBe(true)
     expect(find(view.render(), 'daily-log-manual-input').props.value).toBe('Keep this'); view.unmount()
   })
   it('reopens a selected historical completed task through the existing revision command', async () => {
@@ -314,6 +317,7 @@ describe('existing entity editor command boundary (not persistence evidence)', (
     await save(view)
     expect(find(view.render(), 'entity-edit-body').props.value).toBe('Retain edits')
     expect(await quit!()).toBe(false); find(view.render(), 'entity-edit-error')
+    cancelQuit!() // Main cancellation, not the false return itself, releases input/action locks.
     ;(find(view.render(), 'entity-edit-cancel').props.onClick as () => void)()
     expect(callbacks.onCancel).toHaveBeenCalledTimes(1); expect(api.notes.update).toHaveBeenCalledTimes(1); expect(callbacks.onSaved).not.toHaveBeenCalled(); view.unmount()
   })
@@ -347,5 +351,51 @@ describe('existing entity editor command boundary (not persistence evidence)', (
     find(view.render(), 'entity-edit-error'); expect(api.schedules.update).not.toHaveBeenCalled()
     change(view, 'entity-edit-end', '2026-09-29'); await save(view)
     expect(api.schedules.update).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ kind: 'all-day', startDate: '2026-09-26', endDateExclusive: '2026-09-29' }) })); view.unmount()
+  })
+})
+
+describe('F1 quit ACK input lock (component boundary only)', () => {
+  it('keeps Capture locked after true ACK until cancellation, including a false retry', async () => {
+    const view = probe(CaptureView, { bootstrap, copy }); view.render(); await drain()
+    const input = (value: string) => { (find(view.render(), 'capture-body').props.onChange as (event: unknown) => void)({ target: { value } }) }
+    input('Durable before ACK')
+    expect(await quit!()).toBe(true)
+    expect(find(view.render(), 'capture-body').props.disabled).toBe(true)
+    input('Must not accept after ACK')
+    expect(find(view.render(), 'capture-body').props.value).toBe('Durable before ACK')
+    expect(cancelQuit).toBeTypeOf('function'); cancelQuit!()
+    expect(find(view.render(), 'capture-body').props.disabled).toBe(false)
+    input('Retry retained')
+    vi.mocked(api.drafts.save).mockResolvedValueOnce({ ok: false, requestId: crypto.randomUUID(), error: { code: 'STORAGE_ERROR', message: 'locked', retryable: true } })
+    expect(await quit!()).toBe(false)
+    expect(find(view.render(), 'capture-body').props.disabled).toBe(true)
+    input('Must not accept after false ACK')
+    expect(find(view.render(), 'capture-body').props.value).toBe('Retry retained')
+    cancelQuit!(); expect(find(view.render(), 'capture-body').props.disabled).toBe(false); view.unmount()
+  })
+  it('keeps Daily Log textarea and actions locked after flush until cancellation', async () => {
+    const view = probe(DailyLogPanel, { date: '2026-09-26', locale: 'en-US' as const, copy, refreshToken: 0 }); view.render(); await drain()
+    const input = (value: string) => { (find(view.render(), 'daily-log-manual-input').props.onChange as (event: unknown) => void)({ target: { value } }) }
+    input('Saved supplement'); expect(await quit!()).toBe(true)
+    expect(find(view.render(), 'daily-log-manual-input').props.disabled).toBe(true)
+    expect(find(view.render(), 'daily-log-export').props.disabled).toBe(true)
+    input('Late supplement'); expect(find(view.render(), 'daily-log-manual-input').props.value).toBe('Saved supplement')
+    expect(cancelQuit).toBeTypeOf('function'); cancelQuit!()
+    expect(find(view.render(), 'daily-log-manual-input').props.disabled).toBe(false)
+    input('After cancellation'); expect(find(view.render(), 'daily-log-manual-input').props.value).toBe('After cancellation'); view.unmount()
+  })
+  it('locks a clean EntityEditor after true ACK and a dirty editor after false ACK until cancellation', async () => {
+    const view = probe(EntityEditor, { record: note as EntityRecord, bootstrap, copy, onSaved: vi.fn(), onCancel: vi.fn(), onBlockedChange: vi.fn() }); view.render()
+    const input = (value: string) => { (find(view.render(), 'entity-edit-body').props.onChange as (event: unknown) => void)({ target: { value } }) }
+    expect(await quit!()).toBe(true)
+    expect(find(view.render(), 'entity-edit-body').props.disabled).toBe(true)
+    expect(find(view.render(), 'entity-edit-save').props.disabled).toBe(true)
+    input('Late edits'); expect(find(view.render(), 'entity-edit-body').props.value).toBe('Original')
+    expect(cancelQuit).toBeTypeOf('function'); cancelQuit!()
+    expect(find(view.render(), 'entity-edit-body').props.disabled).toBe(false)
+    input('Dirty edits'); expect(await quit!()).toBe(false)
+    expect(find(view.render(), 'entity-edit-body').props.disabled).toBe(true)
+    input('Late edits after false'); expect(find(view.render(), 'entity-edit-body').props.value).toBe('Dirty edits')
+    cancelQuit!(); expect(find(view.render(), 'entity-edit-body').props.disabled).toBe(false); view.unmount()
   })
 })

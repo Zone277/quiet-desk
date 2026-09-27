@@ -305,12 +305,13 @@ export function CaptureView({ bootstrap, copy }: CaptureViewProps): React.JSX.El
     } catch (reason) {
       setSaveError(`${copy.quitSaveFailed}: ${unknownError(reason)}`)
       return false
-    } finally {
-      quitInFlightRef.current = false
-      setPreparingQuit(false)
     }
   }, [copy.quitSaveFailed, flushLatestDraft])
-  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(prepareQuit), [prepareQuit])
+  const cancelQuit = useCallback(() => {
+    quitInFlightRef.current = false
+    setPreparingQuit(false)
+  }, [])
+  useEffect(() => window.quietDesk.app.subscribeQuitPreparation(prepareQuit, cancelQuit), [prepareQuit, cancelQuit])
 
   useEffect(() => {
     activeRef.current = true

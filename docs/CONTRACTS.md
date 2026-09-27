@@ -215,3 +215,4 @@ Renderer 不得导入 Electron、Node、SQLite、原始 SQL、任意文件路径
 - IPC v4 增量 `app.subscribeRuntime(listener)` 仅传 `{currentDate,resolvedTheme}`，主进程在持久化应用时区日变化（30 秒低频检查）、resume 或系统外观变化后通知已登记窗口。该通知不是用户提交的 `ChangeEvent`，不伪造持久 sequence。renderer 重取 bootstrap/必要查询；浏览旧日期不能自动跳回今日。停止时清理 timer 与 native 监听，不抢焦点。
 - `app.subscribeQuitPreparation(async listener => boolean)` 是只读生命周期订阅，不暴露退出/任意 IPC。主进程退出前发一次 UUID nonce，要求 Capture 与 Library 刷新待写草稿/手写补充；preload 只返回严格 nonce/boolean，主进程只接受等待列表中的登记 main frame 与当次 nonce。10 秒失败/超时取消退出且提示重试，不把保存失败转换为放弃。成功才销毁窗口、注销快捷键、解绑宿主、关闭库。
 - Library 已有实体的编辑和历史任务重开使用已有 `notes.update/tasks.update/reschedule/setCompletion/schedules.update`，revision 冲突/写入失败保留编辑内容；不增加业务日期资格规则或 API，不自动解析文字时间。
+- 退出准备时整窗交互立即冻结，ready后保持。`subscribeQuitPreparation(listener, onCancelled?)` 的可选取消回调仅用于解锁；失败/超时主进程向所有参与窗口广播同nonce取消，preload只解锁当前nonce，旧异步准备不回执新请求。没有增加renderer主动退出能力。该锁不等于异常断电/系统强制终止的零损失保证。

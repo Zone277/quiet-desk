@@ -31,6 +31,8 @@ try {
   assert.equal(await runtime.app.evaluate(() => globalThis.stage7QuitErrors), 1,
     'Failed quit must be rejected and reported')
   assert.equal(runtime.app.process().exitCode, null)
+  assert.equal(await library.evaluate(() => document.documentElement.inert), false, 'Cancelled quit must unlock the whole window')
+  assert.equal(await input.isDisabled(), false, 'Cancelled quit must unlock handwriting')
   assert.equal(await input.inputValue(), '中文手写 / retained after failed quit')
   assert.equal(database.prepare('SELECT manual_markdown FROM daily_logs WHERE log_date = ?').get(currentDate).manual_markdown, '')
   database.exec('DROP TRIGGER stage7_fail_manual')

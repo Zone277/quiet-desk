@@ -464,7 +464,7 @@ export interface QuietDeskApi {
   app: {
     bootstrap(request: BootstrapRequest): Promise<IpcResult<BootstrapSnapshot>>
     subscribeRuntime(listener: (context: RuntimeContext) => void): () => void
-    subscribeQuitPreparation(listener: () => Promise<boolean>): () => void
+    subscribeQuitPreparation(listener: () => Promise<boolean>, onCancelled?: () => void): () => void
   }
   widget: {
     getSnapshot(request: GetWidgetSnapshotRequest): Promise<IpcResult<WidgetSnapshot>>

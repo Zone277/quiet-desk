@@ -25,8 +25,15 @@ export function createQuitPreparation(windows: QuietDeskWindows): {
       const required = [windows.capture, windows.library].filter(window => !window.isDestroyed())
       if (required.length === 0) { resolve(true); return }
       const timer = setTimeout(() => pending?.finish(false), 10_000)
-      pending = { token: randomUUID(), waiting: new Set(required.map(window => window.webContents.id)),
-        finish: (ready) => { clearTimeout(timer); pending = undefined; resolve(ready) } }
+      const token = randomUUID()
+      pending = { token, waiting: new Set(required.map(window => window.webContents.id)),
+        finish: (ready) => {
+          clearTimeout(timer); pending = undefined
+          if (!ready) for (const window of required) {
+            if (!window.isDestroyed()) window.webContents.send(QUIETDESK_CHANNELS.cancelQuit, token)
+          }
+          resolve(ready)
+        } }
       for (const window of required) window.webContents.send(QUIETDESK_CHANNELS.prepareQuit, pending.token)
     }),
     dispose: () => {
