@@ -1,6 +1,6 @@
 # QuietDesk 进度
 
-更新日期：2026-09-26（Asia/Shanghai）
+更新日期：2026-09-27（Asia/Shanghai）
 
 ## 当前结论
 
@@ -13,12 +13,48 @@
 | 阶段 4：快捷捕获与 Markdown | PASS | IPC v3、快捷键生命周期、事务草稿、安全 Markdown、失败重试与跨窗口 E2E；阶段 6 当前真实 IME 子项 PASS，其他输入法/系统组合另列 NOT_RUN |
 | 阶段 5：Daily Log / 删除传播 | PASS | IPC v4、历史快照、跨日补齐、结构化自动区/独立手写区和 UTF-8 导出；阶段 6 真实 Electron 回归通过 |
 | 阶段 6：集成验证与 Windows 交付 | PASS | 本轮可执行修复、五项必跑命令、真实发布/portable SQLite 重启迁移与交付文档完成；交付为开发预览，不是完整桌面签核 |
+| 阶段 7：独立审查与必要修复 | PASS | 新只读reviewer从源码/测试出发，18项合并问题交原owner最小修复；Lead最终22条命令全退出0；完整追踪及剩余人工门槛见FINAL-REVIEW |
 | Windows 桌面宿主验收 | BLOCKED | 原生父子关系/当前几何子项 PASS；缺 Win+D、覆盖、任务栏/Alt+Tab、连续鼠标拖动/缩放等完整证据 |
 | Electron 构建 | PASS | 当前 Electron 44.4.3、Node 24.21.0、SQLite 3.53.4；最终五项命令全部退出 0 |
-| SQLite / Windows 打包 | PASS | 最终 portable 与 unpacked 静态资源/helper/内置 SQLite 实际启动；中文空格路径、两次进程、真实 schema v3→v4 迁移 |
+| SQLite / Windows 打包 | PASS | 阶段7最新 portable/unpacked 静态资源/helper/内置SQLite实际启动；中文空格路径、两次进程；旧CHECK fixture与schema v5升级验证 |
 | 产品验收 A01-A28 | NOT_RUN | 业务及安全回归通过；当前输入法和真实保存对话框有原生 PASS。未测系统组合/完整桌面门槛仍不算通过 |
 
-当前交付：**开发预览，桌面验收未完成**。阶段 6 核心业务、安全、捕获、Daily Log、真实 Windows 发布 SQLite 与迁移已通过；当前 150% 外框几何修复，不将其提升为所有 DPI/显示器或完整桌面行为支持。
+当前交付：**开发预览，桌面验收未完成**。阶段7核心业务、退出保存/竞态、历史/删除和Windows发布回归通过；Win+D/普通窗口覆盖仍BLOCKED，最新真实IME、鼠标连续缩放、切屏/DPI/Explorer/睡眠等人工项NOT_RUN。历史阶段6IME/原生dialog证据保留，不冒称阶段7新分支已人工复测。
+
+## 阶段 7：独立审查、最小修复与最终证据
+
+基线f3f40ec、初始工作树干净。真实multi_agent_v1新只读线程：Volta（数据/历史）、Erdos（桌面/安全）、Kepler（UI/输入与架构），后追加Galileo只读复核；Goodall先实际前检。新线程不继承实现上下文，均从代码/测试审查，非角色模拟。原owner Mencius、Pasteur、Sartre分别修复各自Data/Desktop/UI范围；Lead独占公共类型/preload/IPC、构建、GUI、Git。最多同时3个，SQLite/helper/build和桌面GUI串行，不重建并行ABI，不读写正式userData。
+
+修复范围：v5迁移保留合法正文JSON六倍转义；Library实体编辑/历史任务重开；日期/主题失效通知；Capture/Library读取竞态、跨窗删除正文清空；去抖前退出flush、单窗聚合ACK、匹配nonce取消与整窗持续编辑锁；窗口有限分段native尺寸恢复；320日程时间完整可见。18项问题的位置/触发/反证/owner和A01–A28追踪见 [FINAL-REVIEW](reviews/FINAL-REVIEW.md)，不新增业务或无关重构。
+
+最终串行入口 `node scripts/stage7-verify.mjs` 退出0。证据 `test-results/stage7/commands-1790500222655/results.json` 中22条命令实际全部PASS，01–22.log逐条保留命令、UTC起止、退出码、host Node v22.13.1/win32；实际Electron44.4.3/Node24.21.0/SQLite3.53.4，Windows11 x64 Build22631。
+
+| 实际命令/范围 | 结果 | 证据 |
+| --- | --- | --- |
+| npm run check | PASS，退出0；types+17契约 | 01.log |
+| npx vitest run tests/data tests/platform | PASS，退出0；55 Data+26 platform=81 | 03.log；desktop-stage7原生诊断/精确恢复 |
+| renderer vitest | PASS，退出0；29 | 04.log，controlled hooks单元不是GUI |
+| npm run test:integration | PASS，退出0；真实ElectronSQLite关闭/重开 | 05.log |
+| npm run test:e2e | PASS，退出0；三窗安全、160任务/60日程/40笔记、Capture/DailyLog/生命周期 | 06.log；DOMcomposition非原生IME |
+| 阶段7 demo/runtime/editor/quit/race/small-time | PASS，退出0 | 07–16.log；实际IPC/SQLite；退出写失败为真实DB trigger，dialog测试捕获 |
+| npm run build | PASS，退出0 | 02/17.log |
+| npm run dist:win | PASS，退出0 | 18.log |
+| 当前unpacked IPC、发布SQLite和portable | PASS，退出0 | 19–21.log；发布/便携中文空格目录与独立数据 |
+| 发布静态审查 | PASS，退出0；4项 | 22.log |
+
+失败证据不删除：首轮真实restore FAIL、旧构建缺编辑/跨日/退出丢输入、三项读取竞态，以及复审后quit已ready期间解锁、最小尺寸时间被裁切都有red→green。`commands-1790499091511` 的发布17–19是Lead runner参数转义失败（未启动产物）；`commands-1790499614428/12.log`是退出后访问已销毁Playwright process引用的harness失败。两者均保留FAIL记录，修正调用/捕获顺序后再跑，不更改断言。最终22条全绿，不把旧失败覆写成PASS。
+
+可运行：`release/QuietDesk 0.1.0.exe`（portable）或`release/win-unpacked/QuietDesk.exe`；最终portable SHA256 `2E839917F1489B3EB60D06FD23439E4E6A201F3D7A8BD46FC30DF09CEF404104`。源码构建 `npm ci; npm run build; npm run dist:win`，不需全局改环境。最新演示目录 `test-results/stage7/演示 空格 1790500333336/`，Clock A/B/C、重启/日志/删除/恢复/永久确认/导出，普通启动不注入demo；新演示每次新建目录。
+
+发布数据证据：`test-results/stage7/发布 验证 1790500222656/report.json`、`便携 启动 1790500222656/report.json`。实际环境主屏150%+枚举到100%次屏，**未测试切屏/显示器移除**。6进程总工作集约657.79–666.54MB，Electron合计CPU字段约0.0094–0.0604%；双次启动到三窗ready约2036/1857ms。AMD Ryzen7 7735H、16逻辑CPU、约15.24GB可见RAM；5秒settle后6×1秒采样，另按exe路径Get-Process求和/CPU差量（100%=一核）。工作集共享页可能重复计数，短命helper可能落在采样间隔，非峰值/长期泄漏保证；不宣称MB硬阈值或全局闲置CPU承诺。
+
+Lead逐张检查12张真实Widget/Capture截图并发现小尺寸U08；修复后4张中英×全天/定时完整时间图重新打开检查PASS。源码/编辑冲突与演示图也实际检查；视口外内容未据截图签核。截图路径、旧图FAIL与新图PASS详列FINAL-REVIEW，生成器manifest不篡改。
+
+Git已分部分提交并推送origin/main：`3e6a188` Data JSON迁移、`fda421a` native restore、`47cf064` 编辑/刷新/输入竞态、`ee00d88` 退出持续锁、`2d98645` 最小尺寸时间；仅Lead操作Git，真实数据/截图/日志/导出ignored且不提交。
+
+最终补充 `node scripts/stage7-verify.mjs --supplement` 退出0；`commands-1790500577075/results.json` 的7条均PASS：持续退出锁、小尺寸完整时间、**真实Electron百万控制字符JSON六倍边界的草稿提交/历史/重启**、严格正常退出的三天demo、扩展editor，以及Widget/Capture新截图。Data v5不是仅普通Node通过。最新严格演示目录 `演示 空格 1790500588701`；新的6张Widget和6张Capture分别位于 `stage6-ui/2026-09-27T09-16-38-164Z-8a3c04b5`、`...09-16-43-564Z-82a1a63d`，Lead均已逐图实际打开，核心入口/时间、混排与表格、三主题可见范围PASS。
+
+下一入口仅为未测桌面人工签核与明确配置复测，不自动扩到新阶段：真实Win+D/普通窗口覆盖/Alt+Tab/持续鼠标拖动缩放、最新IME候选、OS主题切换、授权环境中的Explorer/睡眠/显示器变化。若未补齐，最终结论仍开发预览。
 
 ## 阶段 6：真实分工、集成与证据
 

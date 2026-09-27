@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { cpus, totalmem, release } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 
-const root = resolve('test-results/stage6/发布 验证')
+const root = resolve(process.argv[2] ?? 'test-results/stage6/发布 验证')
 const executableDirectory = join(root, '应用 含空格')
 const data = join(root, `隔离 数据 ${Date.now()}`)
 await mkdir(root, { recursive: true })
@@ -131,10 +131,10 @@ try {
   assert.equal(migratedLog.manualRevision, manual.manualRevision)
   const inspection = new DatabaseSync(join(data, 'data', 'quietdesk.sqlite3'), { readOnly: true })
   try {
-    assert.equal(inspection.prepare('PRAGMA user_version').get().user_version, 4)
+    assert.equal(inspection.prepare('PRAGMA user_version').get().user_version, 5)
     assert.equal(inspection.prepare('PRAGMA integrity_check').get().integrity_check, 'ok')
     assert.deepEqual(inspection.prepare('PRAGMA foreign_key_check').all(), [])
-    report.migration = { from: 3, to: 4, runtime: 'packaged Electron', autoItemsPreserved: true, manualPreserved: true }
+    report.migration = { from: 3, to: 5, runtime: 'packaged Electron', autoItemsPreserved: true, manualPreserved: true }
   } finally { inspection.close() }
   report.status = 'PASS'
   await writeFile(join(root, 'runtime-second.log'), second.output(), 'utf8')

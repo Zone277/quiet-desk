@@ -5,7 +5,7 @@ import { chromium } from 'playwright'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 
-const root = resolve('test-results/stage6/便携 启动')
+const root = resolve(process.argv[2] ?? 'test-results/stage6/便携 启动')
 await mkdir(root, { recursive: true })
 const exe = join(root, 'QuietDesk 中文 portable.exe')
 await copyFile(resolve('release/QuietDesk 0.1.0.exe'), exe)

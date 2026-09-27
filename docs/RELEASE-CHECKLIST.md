@@ -1,5 +1,15 @@
 # 阶段 6 发布验证清单
 
+## 阶段7最新交付复核（2026-09-27）
+
+以下阶段6记录保留为历史；当前产物以 [FINAL-REVIEW](reviews/FINAL-REVIEW.md) 和 [PROGRESS](PROGRESS.md) 阶段7为准。真实独立审查、最小修复后最终22条命令及7条补充均退出0；原失败证据没有删除。原生桌面完整行为仍BLOCKED，最新IME/Explorer/睡眠/实际切屏/DPI与物理断网NOT_RUN。
+
+- 当前portable：`release/QuietDesk 0.1.0.exe`，SHA256 `2E839917F1489B3EB60D06FD23439E4E6A201F3D7A8BD46FC30DF09CEF404104`。
+- 发布IPC/SQLite/静态资源/helper：中文空格路径实际运行/重启、旧CHECK迁移、portable两次启动PASS；证据 `test-results/stage7/commands-1790500222655/`、`发布 验证 1790500222656/`、`便携 启动 1790500222656/`。
+- SQLite边界：Electron百万控制字符草稿提交/历史/重启PASS，不用普通Node验证代替；补充 `commands-1790500577075/`。
+- 网络：Chromium deny/offline、无dev server、file资源PASS；没有关闭用户网络适配器，OS物理断网NOT_RUN。
+- 性能与已检查截图、人工桌面步骤、18项修复和A01–A28追踪见FINAL-REVIEW。未测试组合不得据此宣称支持，当前仍开发预览。
+
 结果状态使用 PASS / FAIL / BLOCKED / NOT_RUN，并另列自动/原生人工类型。本原型当前仍是“开发预览，桌面验收未完成”。
 
 ## 自动命令
