@@ -13,6 +13,8 @@ internal static class DesktopHost
     const long CHILD = 0x40000000L, POPUP = 0x80000000L, CAPTION = 0x00C00000L;
     const long TOOLWINDOW = 0x80L, APPWINDOW = 0x40000L;
     const uint FRAME = 0x20, NOACTIVATE = 0x10, NOZORDER = 4;
+    const uint REDRAW_INVALIDATE = 0x0001, REDRAW_ERASE = 0x0004;
+    const uint REDRAW_ALLCHILDREN = 0x0080, REDRAW_UPDATENOW = 0x0100, REDRAW_FRAME = 0x0400;
     const string OriginalStyle = "QuietDesk.Desktop.OriginalStyle";
     const string OriginalExStyle = "QuietDesk.Desktop.OriginalExStyle";
     const string Owned = "QuietDesk.Desktop.Owned";
@@ -30,6 +32,7 @@ internal static class DesktopHost
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] static extern IntPtr SetWindowLong(IntPtr hwnd, int index, IntPtr value);
     [DllImport("user32.dll", SetLastError = true)] static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
     [DllImport("user32.dll", SetLastError = true)] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
+    [DllImport("user32.dll", SetLastError = true)] static extern bool RedrawWindow(IntPtr hwnd, IntPtr update, IntPtr region, uint flags);
     [DllImport("user32.dll", SetLastError = true)] static extern int MapWindowPoints(IntPtr from, IntPtr to, ref Point point, uint count);
     [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
@@ -91,6 +94,7 @@ internal static class DesktopHost
             Require(GetParent(target) == IntPtr.Zero, "Refusing to detach an unmanaged parent");
             return;
         }
+        var oldHost = GetParent(target);
         Rect rect; Require(GetWindowRect(target, out rect), "GetWindowRect failed");
         Parent(target, IntPtr.Zero);
         WriteStyle(target, STYLE, GetProp(target, OriginalStyle).ToInt64());
@@ -98,6 +102,12 @@ internal static class DesktopHost
         Require(GetParent(target) == IntPtr.Zero, "Detach parent verification failed");
         Position(target, IntPtr.Zero, rect);
         Forget(target);
+        // Detaching an Electron child can leave its last frame in Explorer's
+        // WorkerW compositor until the Shell repaints. Redraw only the verified
+        // former host; never destroy or inject into an Explorer window.
+        if (Host(oldHost)) Require(RedrawWindow(oldHost, IntPtr.Zero, IntPtr.Zero,
+            REDRAW_INVALIDATE | REDRAW_ERASE | REDRAW_ALLCHILDREN | REDRAW_UPDATENOW | REDRAW_FRAME),
+            "Desktop host redraw failed");
     }
     static string Attach(IntPtr target) {
         string route;

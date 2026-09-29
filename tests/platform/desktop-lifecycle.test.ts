@@ -26,15 +26,17 @@ import { DesktopSpikeWindowController } from '../../src/main/windows/desktop-spi
 class TestWindow extends EventEmitter {
   bounds = { x: 80, y: 100, width: 480, height: 420 }
   destroyed = false
+  visible = false
   getNativeWindowHandle(): Buffer { const b = Buffer.alloc(8); b.writeBigUInt64LE(123n); return b }
   getBounds() { if (this.destroyed) throw new Error('dead window access'); return { ...this.bounds } }
   getContentBounds() { return this.getBounds() }
   setBounds(bounds: typeof this.bounds) { this.bounds = { ...bounds }; this.emit('resize') }
   isDestroyed() { return this.destroyed }
+  hide() { this.visible = false; this.emit('hide') }
   isAlwaysOnTop() { return false }
   isFocusable() { return true }
   isResizable() { return true }
-  isVisible() { return false }
+  isVisible() { return this.visible }
   isFocused() { return false }
 }
 
@@ -107,6 +109,8 @@ describe('Desktop controller lifecycle (no GUI)', () => {
       detach: vi.fn(async () => { operations.push('detach') })
     }
     const { window, controller, statePath } = await fixture(adapter)
+    window.visible = true
+    window.hide = () => { operations.push('hide'); window.visible = false }
     const retry = controller.retryHost('test')
     const coalesced = controller.retryHost('simultaneous')
     const rejected = expect(retry).rejects.toThrow(/disposal/u)
@@ -121,7 +125,8 @@ describe('Desktop controller lifecycle (no GUI)', () => {
     await coalescedRejected
     await disposing
     expect(adapter.attach).toHaveBeenCalledTimes(1)
-    expect(operations).toEqual(['attach', 'detach'])
+    expect(operations).toEqual(['attach', 'hide', 'detach'])
+    expect(window.isVisible()).toBe(false)
     expect(JSON.parse(await readFile(statePath, 'utf8'))).toMatchObject({
       bounds: { x: 123, y: 150, width: 437, height: 386 }, scaleFactor: 1.5
     })

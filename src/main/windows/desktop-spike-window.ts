@@ -324,6 +324,9 @@ export class DesktopSpikeWindowController implements DesktopSpikeController {
 
     if (!this.window.isDestroyed()) {
       await this.saveStateNow()
+      // A visible child must not briefly become a top-level window during
+      // SetParent(NULL); hide it before the native helper detaches it.
+      if (this.window.isVisible()) this.window.hide()
       await this.adapter.detach(this.handle)
     }
   }

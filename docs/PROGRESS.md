@@ -1,6 +1,22 @@
 # QuietDesk 进度
 
-更新日期：2026-09-27（Asia/Shanghai）
+更新日期：2026-09-29（Asia/Shanghai）
+
+## 同日补充：关闭后残影定向修复
+
+用户进一步确认退出后仍有桌面残影；一次性只读检查显示 QuietDesk 进程为 0、旧 Widget HWND 已消失，因此不再仅以“普通关闭=隐藏”解释。当前 computer-use 可截图列表没有桌面/Explorer，像素本身尚未直接观察。Lead 仅修正 Widget 退出时 `hide → native detach` 顺序，并要求 native helper 对已核验的原宿主 `RedrawWindow`；未改变普通关闭隐藏/托盘退出的语义，未操作 Explorer 或正式用户数据。真实命令 `npm run check`、局部平台 Vitest、`build:native`、`build`、`dist:win`、开发与发布版原生关闭回归、Explorer 窗口计数 smoke 均退出 0；详细证据见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md#关闭后残影的定向修复与复核同日后续)。新本地未提交工作树 portable SHA-256 为 `EA9F324F251BB63E322CB71153CC97C515C30A89ACDA1D23D380158C2A584235`，不能用旧版 SHA 或纯 HEAD 代替。已在隔离 `test-results/stage8/manual-20260929-225530-e64018f1/userData` 启动此包并确认 WorkerW 挂接，实例留给用户执行托盘退出观察。退出清理自动检查 **PASS**；桌面残影视觉复核 **NOT_RUN**。交付仍为开发预览，桌面验收未完成；本轮未提交、推送或发布。
+
+## 阶段 8A：桌面验收入口与阻塞定位
+
+本轮仅诊断，不改生产窗口行为，不自动提交/推送。完整记录、产物 SHA、基线关系、A–F 状态与手动入口见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md)。HEAD 仍为 `ce9e6b2924bd6217e37f7a655649101c6e7985a6`（开始时工作树干净）。两名真实只读 agent：Desktop/Environment `01a0ed6e-1004-7e50-833e-80fcdc65ca23` 与 QA `01a0ed6e-10fe-7033-98e0-a9db52a4a207`，都未改文件；Lead 写隔离诊断入口与本节。
+
+后续用户报告“关闭后桌面残留”的同日初诊：先前隔离 portable 仍有1个启动器/6个 `QuietDesk.exe` 进程，Widget `visible=true`、仍挂 WorkerW，尚非进程退出后的证据。Lead 新增只读 Shell 窗口列表和两项隔离测试；开发/发布原生模式 `window.close()` 都实测隐藏但保留进程，`app.quit()` 都退出0且旧 HWND 不再活动；另一次自动正常退出前后 Explorer 相关句柄数均38。命令/失败的首轮 harness 与最终证据见 [桌面报告的后续定位](reviews/STAGE8-DESKTOP.md#后续报告关闭后桌面残留的定位同日)。像素残影未观察，问题 **BLOCKED** 于用户说明关闭方式及托盘明确退出后的画面/进程状态；没有据此修改生产宿主或宣称修好。
+
+本机 Windows 11 Pro Build22631，当前 Codex/Explorer 均在 Session1 的 `Default` desktop，观察进程位于 `WinSta0`，所以**当前不是 private desktop 导致的阻塞**。现有 `release/QuietDesk 0.1.0.exe` SHA-256 与阶段7记录一致，但包内无 Git SHA，精确提交绑定 `UNVERIFIED`。隔离 portable 实际启动并写入 `test-results/stage8/manual-20260929-215557-910fc4b6/userData`；当前快照确认6个进程、Widget 为 Explorer PID5984 的 WorkerW 子窗口，双方 GUI thread 均在 Session1/`Default`，helper 独立 `inspect` 退出0。正式 userData 未打开，仓库 dev server 数量0。
+
+实际命令：`git rev-parse`/`merge-base`/`rev-list`、`Get-FileHash`、`Get-CimInstance`、`csc.exe` 编译只读诊断、`scripts/stage8-desktop-session.ps1 -Action Start` 与 `-Action Snapshot` 均退出0。第一次启动后4秒的快照在 portable 解包中显示0进程；15秒后重取为6进程/1个原生宿主候选，不能把过早快照写为产品 FAIL。证据位于上述 ignored 目录的 `context.json`、`snapshot-20260929-215617-721.json`、`snapshot-20260929-215712-924.json`。
+
+Win+D、普通窗口覆盖/恢复、点击后的层级、真人鼠标连续缩放与快捷捕获组合均 **NOT_RUN**；A01 完整桌面验收 **BLOCKED**，缺用户在正常交互桌面的 A–D 直接观察，不是已复现宿主 bug。当前可交付仍为**开发预览，桌面验收未完成**。下一步仅让用户执行同一隔离产物的 A–F、回传最小观察和按需快照；若行为失败再定向修复。Explorer 重启/睡眠、多屏/DPI组合仍 NOT_RUN。旧安全报告维持 `f3f40ec` 基线及修复后 partial 边界。
 
 ## 当前结论
 
