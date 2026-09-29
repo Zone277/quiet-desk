@@ -113,3 +113,41 @@ Lead 已实际运行上述 `-Action Start`，退出 0；当前待用户操作实
 当前待验证的机制是 Shell/分层宿主的合成或壁纸背景未重新呈现。截图白区远大于启动时记录的 Widget `(607,298)–(1098,724)`；是否还涉及用户后来调整窗口、截图裁切/缩放或其他画面层，单凭该图不能定论。已向用户询问正常应用窗口覆盖再移开是否消除白区。不会在用户日常桌面上重启 Explorer、擅自重设壁纸或修改全局显示设置；不能套用其它桌面挂接项目的 `SPI_SETDESKWALLPAPER(null)` 绕过多屏/幻灯片配置风险。下一步是最小只读定位与经实测有效的定向修复，完成前桌面残影保持 **FAIL**，整体桌面交付仍 **BLOCKED**。
 
 用户确认桌面右键“刷新”后白块仍在，普通桌面刷新 **FAIL**。为区分壁纸通知与真正修改壁纸，Lead 新增显式参数才运行的 `tests/platform/stage8-wallpaper-notify.cs`：只查验同 Session 的 Explorer 所属 Progman，再向它发送一次 `WM_SETTINGCHANGE` / `SPI_SETDESKWALLPAPER` 通知；不调用 `SystemParametersInfo` 的设置操作、不写配置、不广播给其它窗口。C# 编译退出 0；执行前确认 QuietDesk 进程 0，执行返回 `sent=true`、WinError 0、目标 PID 5984/Session 1。**发送成功不是画面成功**，已请用户观察白块是否消失，视觉结果暂为 **NOT_RUN**。该诊断尚未接入生产退出路径。
+
+用户后续回执：通知后仍在，通知方案视觉结果 **FAIL**。
+
+## 壁纸表面重载修复
+
+基线为已推送的 `831f0fa`，用户明确要求继续修复代码并提交推送。Lead 负责 `native/windows_desktop_host.cs`、主进程 adapter、运行回归、打包与文档；真实 agent Hume (`01a0edc1-10c4-7372-ad18-df7b529ecc6d`) 先只读审查，再仅拥有新增 `tests/platform/desktop-host-cleanup.test.ts` 的有界重试测试。没有模拟 agent 发言、共享修改生产文件或并行重建原生依赖。
+
+生产修改：退出时隐藏 Widget 后解绑，在核验原宿主与当前 Shell/Progman 属于同一 PID、旧宿主已无子窗口且 Progman 不是 `WS_EX_NOREDIRECTIONBITMAP` 拓扑后，调用 `SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, NULL, SPIF_SENDCHANGE)` 重新加载配置中的壁纸表面。没有提供替换图片、空字符串或 `SPIF_UPDATEINIFILE`，不修改注册表键。SPI 是系统壁纸刷新请求，会产生设置通知，不能描述为只在一个 HWND 内重绘。新式分层 Shell 或共享宿主只执行原重绘，明确输出跳过原因，其视觉修复不在当前验证范围。
+
+依据为 [Lively 的 WinDesktopCore.RefreshDesktop 实现](https://github.com/rocksdanister/lively/blob/core-separation/src/Lively/Lively/Core/WinDesktopCore.cs) 对旧式宿主残留采用 NULL 壁纸刷新，以及 [Windows API 的 flags 定义](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)。本实现与 Lively 的 flags 不同，故仍用实际 Windows 测试校验行为。此前把重绘或通知成功等同于可能清掉图像的假设，已被用户画面否定；本次执行的是壁纸表面重载。
+
+同时修复退出异常路径：恢复样式时保留当前 `WS_VISIBLE` 位，防止 attach 时的旧值重新显示窗口；成功完成清理前保留原宿主 HWND/PID/样式，避免第一次解绑后失去重试目标；adapter 最多调用两次，失败仍向上抛出。结构化 `QUIETDESK_DESKTOP_DETACH` 日志记录父句柄、可见样式与壁纸清理方式，不记录内容。
+
+测试补充：`stage8-native-close.mjs --visible-quit` 不先隐藏 Widget，覆盖可见状态直接 `app.quit()`；不带此参数则保留 close-to-hide 路径。`--release` 使用实际包内 helper。测试通过 COM 和相关只读注册表的哈希核验双显示器壁纸、位置、颜色、状态与已读配置，并断言清理方式、窗口未重新显示、进程退出和 HWND 消失。当前图片哈希与配置分开，正常幻灯片切图不直接报配置被改；本机实际测试为静态壁纸（COM status=1、position=4、2 屏），**没有实际启动幻灯片/Spotlight 测试，也没有读取完整 COM 幻灯片源集合**。这些检查不能代替桌面像素。
+
+最终代码已提交并推送 `5a962385241af219adce5c4501135425bb12a801`。本轮在同一 Windows 11 Pro Build 22631、Electron 44.4.3 环境实际执行：
+
+| 命令 / 场景 | 状态 | 退出状态与证据 |
+| --- | --- | --- |
+| `npm run check`；新增测试后再跑 `npm run check:types` | PASS | 均退出 0；17/17 契约与 TypeScript |
+| `npx vitest run tests/platform` | PASS | 最终退出 0；6 文件 31/31（含 QA 的 5 个重试测试）；Lead 独立复跑，不只转述 agent |
+| `npm run build` / `npm run dist:win` | PASS | 退出 0；最终增加重试后重新构建 portable |
+| `node tests/platform/stage8-native-close.mjs --visible-quit` | PASS | 最终退出 0；`test-results/stage8/native-close-KFhOeJ/report.json` |
+| `node tests/platform/stage8-native-close.mjs --release --visible-quit` | PASS | 最终退出 0；`native-close-KtX47B/report.json`：可见 Widget 直接退出，`wallpaperRefresh=reloaded-from-settings`、parent=0、隐藏位保持、原 HWND 消失；使用新包内 helper |
+| `node tests/platform/stage8-native-close.mjs --release` | PASS | 最终退出 0；`native-close-ArUkE5/report.json`：关闭隐藏后退出，配置与图片哈希同前 |
+| 同一 portable 隔离启动再自动正常退出 | PASS | 对启动器进程临时设置 `QUIETDESK_AUTO_QUIT_MS=8000`，调用 `scripts/stage8-desktop-session.ps1 -Action Start` 并恢复父终端环境；等待该启动器退出，核对进程数和配置，再 `-Action Snapshot`。整条检查退出 0，输出 `PORTABLE_CLOSE_PASS`；隔离目录 `test-results/stage8/manual-20260929-233449-86ce83cf/userData`，正式库未接触 |
+| 修复版退出后的桌面像素 / 真实托盘点击 | NOT_RUN | 上一版的用户截图 FAIL 保留；当前自动化直接调用与托盘同一 `app.quit()` 路径，但没有冒称真人点击或读取退出后桌面图像 |
+| 新式分层 Shell、活动幻灯片、Spotlight、其它 Windows 构建 | NOT_RUN | 当前双屏静态背景配置保留不推导其它组合通过 |
+
+Portable 当轮快照 `snapshot-20260929-233459-280.json` 确认 6 个 QuietDesk 进程、1 个 WorkerW 挂接候选、包内 helper inspect 退出 0；退出后的 `snapshot-20260929-233506-485.json` 为 0 个 QuietDesk 进程/窗口。当前配置摘要 SHA-256 `28A0441C67A3D6F50FE763190DF0D79B8CD0D873ACE2167165AB012291E71E4D`、当前图片摘要 `0422DB92023441227A050975A5576A37BA82976383149D8C982913CA8D3318FC` 在最终两条发布退出测试前后均不变。哈希不包含可回传的壁纸路径明文。最终 portable 测试已正常退出，没有特意留下应用实例。
+
+最终产物（版本仍为 0.1.0，以哈希区分，先前包被本地构建覆盖）：
+
+- `release/QuietDesk 0.1.0.exe`：`B7E5D683B345FCFBD502FFCCD13DF062FAB3D2A7FA42020A774E8937097BE572`。
+- `release/win-unpacked/resources/app.asar`：`2F0AB72C15C45A69C6729F69562E79F59B7F410FE513AD94EAD46B0822111D6A`。
+- `release/win-unpacked/resources/native/windows_desktop_host.exe`：`B0F5E1A9BA61F788977F5CB167D972FBAE7CD4E331147490ACE08DE5B5A352F1`，同值已在运行中的 portable 解包路径核对。
+
+构建使用的生产源码与上述 `5a96238` 一致；产物本身仍未嵌入 Git SHA，不能将版本字符串用作提交证明。代码和测试/文档提交推送；用户数据、桌面截图、诊断输出、研究下载和产物继续 ignored，不发布 GitHub Release。旧安全报告仍保留其原基线及 partial 边界。当前完成的是代码修复及可执行回归，最终“桌面无残影”与 Win+D/覆盖的视觉签核仍未完成。

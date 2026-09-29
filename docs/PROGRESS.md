@@ -4,7 +4,11 @@
 
 用户随后对同一新版 portable 执行真实托盘退出并回传截图：桌面出现大块白色矩形，关闭残影 **FAIL**。退出后系统诊断为 QuietDesk 进程 0、旧 Widget HWND 已消失，Explorer 的 WorkerW 宿主仍在；因此上一版 `hide → detach → RedrawWindow` 的自动 PASS 只证明清理调用与进程生命周期，**未修好真实画面**。详见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md#用户实测反证同一新-portable)。现有交付仍为开发预览，桌面验收未完成；不会擅自重设壁纸或重启 Explorer。
 
-桌面右键刷新后仍有白块。一次性受限壁纸通知探针已编译并执行，目标仅为验证过的同会话 Explorer Progman，消息发送成功，不改壁纸设置；**视觉效果待用户回执**。探针没有接入生产代码。
+桌面右键刷新和一次性壁纸通知后白块均仍在，用户视觉回执 **FAIL**。通知探针没有接入生产代码。
+
+后续已实施真正的退出清理代码：旧式 Explorer 宿主解绑后调用 Windows 重新加载当前配置的壁纸表面，保留当前隐藏状态；清理失败保留原宿主身份并最多重试一次。新式分层 Progman 和还有其它子窗口的共享宿主不套用此重载路径。开发与发布运行回归、配置指纹和当前产物记录见 [桌面修复报告](reviews/STAGE8-DESKTOP.md#壁纸表面重载修复)。旧版白块 FAIL 证据保留；当前修复版的实际退出画面另待验证。
+
+代码已提交推送 `5a96238`。Lead 实跑 `check`（17 契约）、最终平台 31/31、`build`、`dist:win`、开发可见直接退出、发布可见直接退出/隐藏后退出和同一 portable 自动正常退出，均退出 0；双屏静态壁纸配置与图片指纹保持一致。真实 agent Hume 只读审查后新增局部重试测试，Lead 集成复核。最终 portable SHA-256 `B7E5D683B345FCFBD502FFCCD13DF062FAB3D2A7FA42020A774E8937097BE572`；隔离 portable 测试目录 `test-results/stage8/manual-20260929-233449-86ce83cf`，该实例已退出。当前修复版像素、活动幻灯片/Spotlight、新式分层 Shell 和 Win+D/覆盖仍 **NOT_RUN**，不把已有自动 PASS 扩写为桌面验收完成。
 
 ## 同日补充：关闭后残影定向修复
 
