@@ -47,6 +47,25 @@ Ten-second health checks, display events, resume and explicit retries all stay
 inside DesktopHostAdapter. Quit drains in-flight work, serializes state writes,
 removes listeners and detaches; Lead owns close-to-hide and application quit.
 
+On a verified legacy Explorer host, detaching the last child also asks User32 to
+reload the configured wallpaper surface (`SPI_SETDESKWALLPAPER`, NULL filename,
+`SPIF_SENDCHANGE`, without `SPIF_UPDATEINIFILE`). A plain WorkerW repaint or a
+manually sent settings notification did not clear the white rectangles reported
+on Windows 11 build 22631. This operation does not supply a replacement image.
+The helper skips the reload for the newer NOREDIRECTIONBITMAP Progman topology
+and for a host still containing another child; those paths are separately logged
+and do not carry the legacy cleanup verification. Detach preserves current
+visibility rather than restoring the attach-time WS_VISIBLE bit.
+The original host HWND/PID and style properties survive a cleanup failure so
+the adapter can retry once; repeated failure remains a shutdown error.
+
+`stage8-native-close.mjs --visible-quit` covers quitting a visible Widget; omit
+the flag for close-to-hide then quit, and add `--release` for the unpacked app and
+its packaged helper. The test compares read-only wallpaper configuration hashes
+(per-monitor COM wallpaper/position/status and relevant registry values) before
+and after, alongside real HWND/exit assertions. It still labels desktop pixels
+NOT_RUN; this diagnostic is not a substitute for visual confirmation.
+
 Native DPI correction is distinct from desktop-host fallback: forced fallback
 may use the helper only for size correction but remains bridge=none / attached=false.
 Automated runtime checks do not establish Win+D, coverage by ordinary windows,

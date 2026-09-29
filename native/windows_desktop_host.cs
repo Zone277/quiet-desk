@@ -12,18 +12,25 @@ internal static class DesktopHost
     const int STYLE = -16, EXSTYLE = -20;
     const long CHILD = 0x40000000L, POPUP = 0x80000000L, CAPTION = 0x00C00000L;
     const long TOOLWINDOW = 0x80L, APPWINDOW = 0x40000L;
+    const long VISIBLE = 0x10000000L, NOREDIRECTIONBITMAP = 0x00200000L;
     const uint FRAME = 0x20, NOACTIVATE = 0x10, NOZORDER = 4;
     const uint REDRAW_INVALIDATE = 0x0001, REDRAW_ERASE = 0x0004;
     const uint REDRAW_ALLCHILDREN = 0x0080, REDRAW_UPDATENOW = 0x0100, REDRAW_FRAME = 0x0400;
     const string OriginalStyle = "QuietDesk.Desktop.OriginalStyle";
     const string OriginalExStyle = "QuietDesk.Desktop.OriginalExStyle";
     const string Owned = "QuietDesk.Desktop.Owned";
+    const string DetachedHost = "QuietDesk.Desktop.DetachedHost";
+    const string DetachedHostPid = "QuietDesk.Desktop.DetachedHostPid";
     [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct Point { public int X, Y; }
     delegate bool EnumCallback(IntPtr hwnd, IntPtr parameter);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string name);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string name);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool SystemParametersInfo(uint action, uint parameter, IntPtr value, uint flags);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hwnd, StringBuilder text, int count);
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr hwnd);
@@ -88,26 +95,65 @@ internal static class DesktopHost
     }
     static void Forget(IntPtr target) {
         RemoveProp(target, Owned); RemoveProp(target, OriginalStyle); RemoveProp(target, OriginalExStyle);
+        RemoveProp(target, DetachedHost); RemoveProp(target, DetachedHostPid);
     }
-    static void Detach(IntPtr target) {
+    static string RefreshDetachedHost(IntPtr oldHost) {
+        if (!Host(oldHost)) return "host-gone";
+        Require(RedrawWindow(oldHost, IntPtr.Zero, IntPtr.Zero,
+            REDRAW_INVALIDATE | REDRAW_ERASE | REDRAW_ALLCHILDREN | REDRAW_UPDATENOW | REDRAW_FRAME),
+            "Desktop host redraw failed");
+        var progman = FindWindow("Progman", null);
+        uint shellPid, hostPid, progmanPid;
+        GetWindowThreadProcessId(GetShellWindow(), out shellPid);
+        GetWindowThreadProcessId(oldHost, out hostPid);
+        GetWindowThreadProcessId(progman, out progmanPid);
+        if (shellPid == 0 || hostPid != shellPid || progmanPid != shellPid)
+            return "unverified-shell";
+        // New raised-desktop Shells use a different composition topology. Reloading
+        // their wallpaper can replace WorkerW, so do not apply the legacy repair.
+        if ((Style(progman, EXSTYLE) & NOREDIRECTIONBITMAP) != 0)
+            return "layered-shell-redraw-only";
+        bool hasChildren = false;
+        EnumChildWindows(oldHost, delegate(IntPtr child, IntPtr ignored) {
+            hasChildren = true; return false;
+        }, IntPtr.Zero);
+        if (hasChildren) return "shared-host-redraw-only";
+        // Legacy WorkerW can retain a blank redirected surface after Chromium
+        // detaches. WM_PAINT / WM_SETTINGCHANGE alone do not rebuild that surface.
+        // NULL reloads the configured wallpaper; do not pass an empty filename or
+        // SPIF_UPDATEINIFILE, and never replace the user's wallpaper configuration.
+        Require(SystemParametersInfo(0x0014, 0, IntPtr.Zero, 0x0002),
+            "Desktop wallpaper surface reload failed");
+        return "reloaded-from-settings";
+    }
+    static string Detach(IntPtr target) {
         if (GetProp(target, Owned) == IntPtr.Zero) {
             Require(GetParent(target) == IntPtr.Zero, "Refusing to detach an unmanaged parent");
-            return;
+            return "not-managed";
         }
-        var oldHost = GetParent(target);
+        var oldHost = GetProp(target, DetachedHost);
+        if (oldHost == IntPtr.Zero) {
+            oldHost = GetParent(target);
+            if (Host(oldHost)) {
+                uint oldPid; GetWindowThreadProcessId(oldHost, out oldPid);
+                Require(SetProp(target, DetachedHostPid, new IntPtr(oldPid)), "Cannot preserve detached host PID");
+                Require(SetProp(target, DetachedHost, oldHost), "Cannot preserve detached host");
+            }
+        }
+        uint currentHostPid; GetWindowThreadProcessId(oldHost, out currentHostPid);
+        if (GetProp(target, DetachedHostPid).ToInt64() != currentHostPid) oldHost = IntPtr.Zero;
+        var visible = Style(target, STYLE) & VISIBLE;
         Rect rect; Require(GetWindowRect(target, out rect), "GetWindowRect failed");
         Parent(target, IntPtr.Zero);
-        WriteStyle(target, STYLE, GetProp(target, OriginalStyle).ToInt64());
+        WriteStyle(target, STYLE, (GetProp(target, OriginalStyle).ToInt64() & ~VISIBLE) | visible);
         WriteStyle(target, EXSTYLE, GetProp(target, OriginalExStyle).ToInt64());
         Require(GetParent(target) == IntPtr.Zero, "Detach parent verification failed");
         Position(target, IntPtr.Zero, rect);
+        var refresh = RefreshDetachedHost(oldHost);
+        // Keep the original host and styles if refresh fails: a second fixed-action
+        // helper invocation can finish cleanup even though GetParent is now NULL.
         Forget(target);
-        // Detaching an Electron child can leave its last frame in Explorer's
-        // WorkerW compositor until the Shell repaints. Redraw only the verified
-        // former host; never destroy or inject into an Explorer window.
-        if (Host(oldHost)) Require(RedrawWindow(oldHost, IntPtr.Zero, IntPtr.Zero,
-            REDRAW_INVALIDATE | REDRAW_ERASE | REDRAW_ALLCHILDREN | REDRAW_UPDATENOW | REDRAW_FRAME),
-            "Desktop host redraw failed");
+        return refresh;
     }
     static string Attach(IntPtr target) {
         string route;
@@ -171,8 +217,9 @@ internal static class DesktopHost
             var dpiContext = new IntPtr(-4);
             Require(SetProcessDpiAwarenessContext(dpiContext) || AreDpiAwarenessContextsEqual(GetThreadDpiAwarenessContext(), dpiContext), "Per-monitor V2 DPI awareness unavailable");
             string route = "inspect-" + Class(GetParent(target)).ToLowerInvariant();
+            string wallpaperRefresh = null;
             if (action == "attach") route = Attach(target);
-            if (action == "detach") { Detach(target); route = "desktop-detach"; }
+            if (action == "detach") { wallpaperRefresh = Detach(target); route = "desktop-detach"; }
             if (action == "resize") {
                 int dx, dy;
                 if (!TryParseResizeDeltas(args, out dx, out dy))
@@ -187,7 +234,9 @@ internal static class DesktopHost
                 Position(target, GetParent(target), rect);
                 return Emit(new { action = action, success = true }, 0);
             }
-            return Emit(Details(target, action, route), 0);
+            var details = Details(target, action, route);
+            if (action == "detach") details.Add("wallpaperRefresh", wallpaperRefresh);
+            return Emit(details, 0);
         } catch (Exception error) {
             return Emit(new { action = action, success = false, error = error.Message }, 1);
         }

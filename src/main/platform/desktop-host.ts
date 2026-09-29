@@ -19,6 +19,7 @@ interface BridgeResult {
   parentClass?: string
   styleHex?: string
   exStyleHex?: string
+  wallpaperRefresh?: string
   error?: string
 }
 
@@ -75,6 +76,7 @@ function parseBridgeResult(stdout: string, expectedAction: BridgeAction): Bridge
     parentClass: optionalString(parsed, 'parentClass'),
     styleHex: optionalString(parsed, 'styleHex'),
     exStyleHex: optionalString(parsed, 'exStyleHex'),
+    wallpaperRefresh: optionalString(parsed, 'wallpaperRefresh'),
     error: optionalString(parsed, 'error')
   }
 }
@@ -151,7 +153,20 @@ class WindowsNativeDesktopHostAdapter implements DesktopHostAdapter {
   }
 
   async detach(nativeHandle: string): Promise<void> {
-    await this.runBridge('detach', nativeHandle)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const result = await this.runBridge('detach', nativeHandle)
+        if (!result.success) throw new Error(result.error ?? 'Native desktop detach failed')
+        console.info(`QUIETDESK_DESKTOP_DETACH ${JSON.stringify({
+          success: result.success, parentHandle: result.parentHandle,
+          styleHex: result.styleHex, wallpaperRefresh: result.wallpaperRefresh
+        })}`)
+        return
+      } catch (error) {
+        if (attempt === 1) throw error
+        console.warn('QUIETDESK_DESKTOP_DETACH_RETRY', error)
+      }
+    }
   }
 
   private async runBridge(action: BridgeAction, nativeHandle: string, geometry: string[] = []): Promise<BridgeResult> {
