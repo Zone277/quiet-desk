@@ -2,6 +2,8 @@
 
 更新日期：2026-09-29（Asia/Shanghai）
 
+用户随后对同一新版 portable 执行真实托盘退出并回传截图：桌面出现大块白色矩形，关闭残影 **FAIL**。退出后系统诊断为 QuietDesk 进程 0、旧 Widget HWND 已消失，Explorer 的 WorkerW 宿主仍在；因此上一版 `hide → detach → RedrawWindow` 的自动 PASS 只证明清理调用与进程生命周期，**未修好真实画面**。详见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md#用户实测反证同一新-portable)。现有交付仍为开发预览，桌面验收未完成；不会擅自重设壁纸或重启 Explorer。
+
 ## 同日补充：关闭后残影定向修复
 
 用户进一步确认退出后仍有桌面残影；一次性只读检查显示 QuietDesk 进程为 0、旧 Widget HWND 已消失，因此不再仅以“普通关闭=隐藏”解释。当前 computer-use 可截图列表没有桌面/Explorer，像素本身尚未直接观察。Lead 仅修正 Widget 退出时 `hide → native detach` 顺序，并要求 native helper 对已核验的原宿主 `RedrawWindow`；未改变普通关闭隐藏/托盘退出的语义，未操作 Explorer 或正式用户数据。真实命令 `npm run check`、局部平台 Vitest、`build:native`、`build`、`dist:win`、开发与发布版原生关闭回归、Explorer 窗口计数 smoke 均退出 0；详细证据见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md#关闭后残影的定向修复与复核同日后续)。新本地未提交工作树 portable SHA-256 为 `EA9F324F251BB63E322CB71153CC97C515C30A89ACDA1D23D380158C2A584235`，不能用旧版 SHA 或纯 HEAD 代替。已在隔离 `test-results/stage8/manual-20260929-225530-e64018f1/userData` 启动此包并确认 WorkerW 挂接，实例留给用户执行托盘退出观察。退出清理自动检查 **PASS**；桌面残影视觉复核 **NOT_RUN**。交付仍为开发预览，桌面验收未完成；本轮未提交、推送或发布。

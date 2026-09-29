@@ -105,3 +105,9 @@ cd 'C:\Users\50199\Desktop\web_proj\QuietDesk'
 下一步只需在没有其它 QuietDesk 实例及开发服务器时，运行 `scripts/stage8-desktop-session.ps1 -Action Start`（它会为**当前新 portable**创建隔离 userData，并输出实际目录和 SHA）；让 Widget 自然显示，托盘选择“退出 QuietDesk”，然后观察同一位置是否还留图像，并按需运行 `-Action Snapshot -RunDirectory <本次输出的目录>`。请只回报“残影消失/仍在”、关闭方式及本次 `RUN_DIRECTORY`；若仍在，最好附只包含 Widget 区域的退出前后画面。A–F 的 Win+D/覆盖验收仍独立为 NOT_RUN/BLOCKED。未经用户实际观察，本问题只能称为“清理路径已修复并自动复核，视觉结果 NOT_RUN”。
 
 Lead 已实际运行上述 `-Action Start`，退出 0；当前待用户操作实例的 `RUN_DIRECTORY` 是 `test-results/stage8/manual-20260929-225530-e64018f1`，实际 userData 是该目录下 `userData`。`snapshot-20260929-225539-746.json` 记录新 portable SHA `EA9F...`、6 个 QuietDesk 进程、Widget HWND `0x260AFE` 可见并挂在 WorkerW，打包 native helper `inspect` 退出 0；该实例特意保持运行，供用户执行托盘退出后的残影观察。启动与挂接诊断 **PASS**，退出后的当前实例视觉结果仍 **NOT_RUN**。
+
+### 用户实测反证（同一新 portable）
+
+用户按上述步骤在正常交互桌面托盘选择“退出 QuietDesk”，明确报告原位置仍有残影，并提供退出后的局部截图（用户临时附件，不复制入仓库）。截图显示桌面壁纸上有大块白色矩形空白区域，**视觉结果 FAIL**；不是自动测试推测。Lead 随后一次性只读诊断：`QuietDesk.exe` 进程数 0，`quietDeskWindows` 空，原 Widget HWND `0x260AFE` 不存在，而 Explorer PID 5984 的宿主 WorkerW `0x430910` 仍可见。因此不是仍在运行的 QuietDesk 窗口；`hide → detach → RedrawWindow(WorkerW)` 在本次实际用户画面中**未消除残影**。此前自动关闭、句柄消失和 helper 成功仍是 PASS，但不能提升为画面 PASS。
+
+当前待验证的机制是 Shell/分层宿主的合成或壁纸背景未重新呈现。截图白区远大于启动时记录的 Widget `(607,298)–(1098,724)`；是否还涉及用户后来调整窗口、截图裁切/缩放或其他画面层，单凭该图不能定论。已向用户询问正常应用窗口覆盖再移开是否消除白区。不会在用户日常桌面上重启 Explorer、擅自重设壁纸或修改全局显示设置；不能套用其它桌面挂接项目的 `SPI_SETDESKWALLPAPER(null)` 绕过多屏/幻灯片配置风险。下一步是最小只读定位与经实测有效的定向修复，完成前桌面残影保持 **FAIL**，整体桌面交付仍 **BLOCKED**。
