@@ -1,6 +1,27 @@
 # QuietDesk 进度
 
-更新日期：2026-09-29（Asia/Shanghai）
+更新日期：2026-10-01（Asia/Shanghai）
+
+## 2026-10-01：日期格式化的局部优化
+
+基线 `fa495412a1fa13b53340e51d41fd08e3f42e5682`，开始时工作树干净。本轮由 Lead 单 agent 完成集中修改，无并行子任务，不宣称多 agent 协作。仅修改 `src/renderer/src/ui-utils.ts`、新增同目录 `ui-utils.test.tsx` 和本进度；不改依赖、IPC、数据库或桌面宿主。
+
+日期/时间格式化改用每个 renderer 至多 32 项的 LRU 缓存，键包含 locale 与全部格式选项（含时区）；失败的构造不入缓存。列表渲染与本地时间转 UTC 的迭代复用 formatter，不缓存日期结果或时区偏移，不修改业务日期规则。测试实测相同配置格式化 100 条只构造 1 次；这不是整应用 CPU/内存基准结论。
+
+环境 Windows / host Node v22.13.1；真实存储 smoke 为 Electron44.4.3、Node24.21.0、SQLite3.53.4，独立临时 `quietdesk-integration-XZvYte` 数据目录，不访问正式数据。
+
+| 实际命令 | 状态与证据 |
+| --- | --- |
+| `npm run check` | PASS，退出0；TypeScript + 17项契约 |
+| `npx vitest run --config src/renderer/vitest.config.ts` | PASS，退出0；33项（新增4项覆盖复用、语言/时区/格式隔离、DST gap/冬夏偏移、LRU淘汰及无效时区） |
+| `npm run test:integration` | PASS，退出0；含 native helper 与三入口 build，真实 Electron SQLite 关闭重开；输出 `INTEGRATION_S2_ELECTRON_SQLITE_PASS` |
+| `npm run test:e2e` | FAIL，退出1；build成功，但第一项 windows-shells 在 Playwright `_CRSession._onMessage` 内部 Assertion error 终止，未完成业务断言；后续串联用例 NOT_RUN |
+| `node tests/e2e/windows-shells.mjs` | FAIL，退出1；独立重跑得到同一内部断言，原因未确认，不认定为本次改动导致或已排除回归 |
+| `dist:win`、真实桌面/视觉/IME复测 | NOT_RUN；未更新 portable，不扩写旧桌面验收结论 |
+
+首轮新增测试曾有2项 FAIL：Vitest 直接 spy 内建构造函数返回了缺少 format 的对象。已改为计数同时委托真实 Intl 构造函数，保留全部断言；最终33项通过。下一步为排查当前 Playwright 会话启动断言并重跑 E2E；桌面残影与 Win+D/覆盖仍沿用既有未签核边界。交付仍为开发预览，桌面验收未完成。
+
+## 2026-09-29：桌面退出清理（历史记录）
 
 用户随后对同一新版 portable 执行真实托盘退出并回传截图：桌面出现大块白色矩形，关闭残影 **FAIL**。退出后系统诊断为 QuietDesk 进程 0、旧 Widget HWND 已消失，Explorer 的 WorkerW 宿主仍在；因此上一版 `hide → detach → RedrawWindow` 的自动 PASS 只证明清理调用与进程生命周期，**未修好真实画面**。详见 [STAGE8-DESKTOP.md](reviews/STAGE8-DESKTOP.md#用户实测反证同一新-portable)。现有交付仍为开发预览，桌面验收未完成；不会擅自重设壁纸或重启 Explorer。
 

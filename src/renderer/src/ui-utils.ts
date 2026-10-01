@@ -1,6 +1,28 @@
 import type { IpcFailure, Locale } from '../../shared/ipc-contract'
 import type { DateOnly, EntityRecord, Schedule } from '../../shared/model'
 
+// Bounded per-renderer cache: list renders and wall-time conversion loops reuse
+// formatters without retaining every time zone a user has ever selected.
+const dateTimeFormatters = new Map<string, Intl.DateTimeFormat>()
+const formatterCacheLimit = 32
+
+function dateTimeFormatter(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = JSON.stringify([locale, options])
+  const cached = dateTimeFormatters.get(key)
+  if (cached) {
+    dateTimeFormatters.delete(key)
+    dateTimeFormatters.set(key, cached)
+    return cached
+  }
+  const formatter = new Intl.DateTimeFormat(locale, options)
+  if (dateTimeFormatters.size >= formatterCacheLimit) {
+    const oldest = dateTimeFormatters.keys().next().value
+    if (oldest !== undefined) dateTimeFormatters.delete(oldest)
+  }
+  dateTimeFormatters.set(key, formatter)
+  return formatter
+}
+
 export function newRequestId(): string {
   return crypto.randomUUID()
 }
@@ -15,7 +37,7 @@ export function unknownError(reason: unknown): string {
 
 export function formatDateOnly(value: DateOnly, locale: Locale): string {
   const [year, month, day] = value.split('-').map(Number)
-  return new Intl.DateTimeFormat(locale, {
+  return dateTimeFormatter(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -24,7 +46,7 @@ export function formatDateOnly(value: DateOnly, locale: Locale): string {
 }
 
 export function formatInstant(value: string, locale: Locale, timeZone: string): string {
-  return new Intl.DateTimeFormat(locale, {
+  return dateTimeFormatter(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -37,7 +59,7 @@ export function formatSchedule(schedule: Schedule, locale: Locale, timeZone: str
   if (schedule.kind === 'all-day') {
     return `${formatDateOnly(schedule.startDate, locale)} – ${formatDateOnly(schedule.endDateExclusive, locale)}`
   }
-  const formatter = new Intl.DateTimeFormat(locale, {
+  const formatter = dateTimeFormatter(locale, {
     hour: '2-digit',
     minute: '2-digit',
     timeZone
@@ -61,7 +83,7 @@ export function nextDate(value: DateOnly, offset: number): DateOnly {
 }
 
 function zonedDateTimeParts(instant: Date, timeZone: string): Record<string, string> {
-  return Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+  return Object.fromEntries(dateTimeFormatter('en-CA', {
     timeZone,
     year: 'numeric',
     month: '2-digit',
